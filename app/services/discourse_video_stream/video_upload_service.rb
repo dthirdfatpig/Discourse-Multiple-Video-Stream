@@ -42,8 +42,11 @@ module DiscourseVideoStream
     def fetch_upload_details(params:)
       provider = SiteSetting.video_stream_provider.presence || "cloudflare"
 
-      if provider == "bunny"
+      case provider
+      when "bunny"
         fetch_bunny_upload_details(params)
+      when "hovod"
+        fetch_hovod_upload_details(params)
       else
         fetch_cloudflare_upload_details(params)
       end
@@ -141,6 +144,93 @@ module DiscourseVideoStream
           "LibraryId" => library_id.to_s,
           "VideoId" => video_id,
         },
+      }
+    rescue JSON::ParserError, Faraday::Error => error
+      log_exception(error)
+      context.fail!(error: I18n.t("video_stream.errors.upload_url"), status: 422)
+    end
+
+    def fetch_hovod_upload_details(params)
+      api_url = SiteSetting.video_stream_hovod_api_url.presence
+      api_key = SiteSetting.video_stream_hovod_api_key.presence
+
+      if api_url.blank? || api_key.blank?
+        context.fail!(error: I18n.t("video_stream.errors.misconfigured"), status: 422)
+      end
+
+      clean_api_url = api_url.to_s.strip.chomp("/")
+      metadata = parse_metadata(params.upload_metadata)
+      title = extract_video_title(metadata)
+
+      headers = {
+        "Authorization" => "Bearer #{api_key}",
+        "Content-Type" => "application/json",
+        "Accept" => "application/json",
+      }
+      if SiteSetting.video_stream_hovod_organization_id.present?
+        headers["x-organization-id"] = SiteSetting.video_stream_hovod_organization_id.strip
+      end
+
+      asset_meta = {
+        source: "discourse",
+      }
+      asset_meta[:creatorId] = params.creator_id.to_s if params.creator_id.present?
+
+      max_duration = SiteSetting.video_stream_max_duration.presence || DEFAULT_MAX_DURATION_SECONDS
+      asset_meta[:maxDurationSeconds] = max_duration.to_s if max_duration.present?
+
+      create_response =
+        Faraday.post(
+          "#{clean_api_url}/v1/assets",
+          { title: title, metadata: asset_meta }.to_json,
+          headers,
+        ) do |req|
+          req.options.timeout = FARADAY_TIMEOUT
+          req.options.open_timeout = FARADAY_OPEN_TIMEOUT
+        end
+
+      if create_response.status >= 400
+        log_failure(create_response.status, parse_body(create_response.body))
+        context.fail!(error: I18n.t("video_stream.errors.upload_url"), status: 422)
+      end
+
+      body = parse_body(create_response.body)
+      asset_data = body["data"] || body
+      asset_id = asset_data["id"]
+
+      if asset_id.blank?
+        log_failure(create_response.status, body)
+        context.fail!(error: I18n.t("video_stream.errors.upload_url"), status: 422)
+      end
+
+      upload_url_response =
+        Faraday.post(
+          "#{clean_api_url}/v1/assets/#{asset_id}/upload-url",
+          nil,
+          headers,
+        ) do |req|
+          req.options.timeout = FARADAY_TIMEOUT
+          req.options.open_timeout = FARADAY_OPEN_TIMEOUT
+        end
+
+      if upload_url_response.status >= 400
+        log_failure(upload_url_response.status, parse_body(upload_url_response.body))
+        context.fail!(error: I18n.t("video_stream.errors.upload_url"), status: 422)
+      end
+
+      upload_body = parse_body(upload_url_response.body)
+      upload_data = upload_body["data"] || upload_body
+      upload_url = upload_data["uploadUrl"]
+
+      if upload_url.blank?
+        log_failure(upload_url_response.status, upload_body)
+        context.fail!(error: I18n.t("video_stream.errors.upload_url"), status: 422)
+      end
+
+      {
+        upload_url: upload_url,
+        stream_media_id: asset_id,
+        tus_resumable: params.tus_resumable.presence || DEFAULT_TUS_VERSION,
       }
     rescue JSON::ParserError, Faraday::Error => error
       log_exception(error)

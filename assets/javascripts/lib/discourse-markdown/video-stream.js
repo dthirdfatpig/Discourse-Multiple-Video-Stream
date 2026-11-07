@@ -1,5 +1,5 @@
 /**
- * Custom BBCode for Cloudflare Stream video embeds
+ * Custom BBCode for Video Stream embeds (Cloudflare Stream, Bunny.net, Hovod)
  * Converts [video-stream id="video_id"][/video-stream] to a video container that will be initialized with Shaka Player
  * Supports both inline and block formats
  */
@@ -12,7 +12,7 @@ function isValidVideoId(videoId) {
 function isValidProvider(provider) {
   return (
     typeof provider === "string" &&
-    ["cloudflare", "bunny"].includes(provider.trim().toLowerCase())
+    ["cloudflare", "bunny", "hovod"].includes(provider.trim().toLowerCase())
   );
 }
 

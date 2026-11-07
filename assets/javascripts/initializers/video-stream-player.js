@@ -38,9 +38,9 @@ function renderErrorMessage(container, message, videoId) {
 
 /**
  * Build an ordered list of candidate playback sources for a video.
+ * Supports Cloudflare Stream, Bunny.net, and Hovod.
  * If provider is specified in data-provider, that provider is prioritized.
- * If not specified, standard UUIDs with hyphens prioritize Bunny, otherwise
- * the currently active panel provider is tried first, followed by the other.
+ * Otherwise, smart heuristics detect characteristic ID patterns.
  *
  * @param {string} videoId
  * @param {string} [explicitProvider]
@@ -52,6 +52,7 @@ function getPlaybackSources(videoId, explicitProvider, siteSettings) {
     siteSettings.video_stream_customer_subdomain
   );
   const bunnyDomain = cleanDomain(siteSettings.video_stream_bunny_hostname);
+  const hovodDomain = cleanDomain(siteSettings.video_stream_hovod_hostname);
   const defaultProvider = siteSettings.video_stream_provider || "cloudflare";
 
   const bunnySources = bunnyDomain
@@ -79,21 +80,48 @@ function getPlaybackSources(videoId, explicitProvider, siteSettings) {
       ]
     : [];
 
+  const hovodSources = hovodDomain
+    ? [
+        {
+          provider: "hovod",
+          manifestUri: `https://${hovodDomain}/playback/${videoId}/master.m3u8`,
+          poster: `https://${hovodDomain}/playback/${videoId}/thumbnail.jpg`,
+        },
+      ]
+    : [];
+
   let preferredProvider;
-  if (explicitProvider === "bunny" || explicitProvider === "cloudflare") {
+  if (
+    explicitProvider === "bunny" ||
+    explicitProvider === "cloudflare" ||
+    explicitProvider === "hovod"
+  ) {
     preferredProvider = explicitProvider;
   } else if (videoId.includes("-")) {
     // Standard UUIDs with hyphens are characteristic of Bunny Stream GUIDs
     preferredProvider = "bunny";
+  } else if (/^[0-9a-f]{32}$/i.test(videoId)) {
+    // 32 hex characters are characteristic of Cloudflare Stream video IDs
+    preferredProvider = "cloudflare";
+  } else if (/^[A-Za-z0-9_-]{12,24}$/.test(videoId) && hovodSources.length) {
+    // 12-24 character nanoids are characteristic of Hovod asset IDs / playback IDs
+    preferredProvider = "hovod";
   } else {
     preferredProvider = defaultProvider;
   }
 
-  if (preferredProvider === "bunny") {
-    return [...bunnySources, ...cloudflareSources];
-  } else {
-    return [...cloudflareSources, ...bunnySources];
-  }
+  const providerMap = {
+    bunny: bunnySources,
+    cloudflare: cloudflareSources,
+    hovod: hovodSources,
+  };
+
+  const prioritized = providerMap[preferredProvider] || [];
+  const others = Object.entries(providerMap)
+    .filter(([name]) => name !== preferredProvider)
+    .flatMap(([, s]) => s);
+
+  return [...prioritized, ...others];
 }
 
 /**
@@ -379,6 +407,30 @@ function registerCustomElements() {
   );
 }
 
+async function loadShakaAssets() {
+  try {
+    await Promise.all([
+      loadScript(
+        "/plugins/multiple-video-stream/javascripts/shaka-player.ui.js"
+      ),
+      loadScript(
+        "/plugins/multiple-video-stream/stylesheets/shaka-player.ui.css",
+        { css: true }
+      ),
+    ]);
+  } catch (_) {
+    await Promise.all([
+      loadScript(
+        "/plugins/discourse-video-stream/javascripts/shaka-player.ui.js"
+      ),
+      loadScript(
+        "/plugins/discourse-video-stream/stylesheets/shaka-player.ui.css",
+        { css: true }
+      ),
+    ]);
+  }
+}
+
 /**
  * Initialize Shaka Player for a video element
  * @param {HTMLElement} container - The video container element
@@ -395,16 +447,7 @@ async function initializeShakaPlayer(
   siteSettings
 ) {
   try {
-    // Load Shaka Player UI library (includes base player + UI) and CSS from vendored assets
-    await Promise.all([
-      loadScript(
-        "/plugins/discourse-video-stream/javascripts/shaka-player.ui.js"
-      ),
-      loadScript(
-        "/plugins/discourse-video-stream/stylesheets/shaka-player.ui.css",
-        { css: true }
-      ),
-    ]);
+    await loadShakaAssets();
 
     // Check if browser is supported
     if (!window.shaka?.Player?.isBrowserSupported()) {
@@ -427,15 +470,11 @@ async function initializeShakaPlayer(
     // Create UI instance with the video element and container
     const ui = new window.shaka.ui.Overlay(player, container, videoElement);
 
-    // Configure UI controls to match Shaka Player demo layout
-    // This follows the same pattern as https://shaka-player-demo.appspot.com
     const config = {
       addBigPlayButton: true,
       addSeekBar: true,
-      // Prevent orientation lock crashes and unwanted auto-rotation on mobile (e.g., Android Firefox)
       forceLandscapeOnFullscreen: false,
       enableFullscreenOnRotation: false,
-      // Control bar layout matching the demo
       controlPanelElements: [
         "play_pause",
         "mute",
@@ -445,24 +484,21 @@ async function initializeShakaPlayer(
         "overflow_menu",
         "fullscreen",
       ],
-      // Overflow menu with quality, aspect ratio, and playback rate
       overflowMenuButtons: [
         "captions",
-        "quality", // Resolution selection
-        "aspect_ratio", // Aspect ratio changer
+        "quality",
+        "aspect_ratio",
         "language",
-        "playback_rate", // Playback speed
+        "playback_rate",
         "picture_in_picture",
         "cast",
       ],
-      // Enable keyboard shortcuts (space = play/pause, arrows = seek, etc.)
       enableKeyboardPlaybackControls: true,
     };
 
     ui.configure(config);
 
-    // Guard against mobile browsers (especially Firefox on Android) resetting video.currentTime to 0
-    // or pausing playback when entering/exiting native fullscreen, and ensure aspect ratio persists.
+    // Guard against mobile browsers resetting video.currentTime
     let lastPlaybackTime = 0;
     let wasPlayingBeforeFullscreen = false;
     let isFullscreenTransition = false;
@@ -563,6 +599,32 @@ async function initializeShakaPlayer(
       }
     }
 
+    // Dynamic Hovod API lookup fallback if configured
+    if (!successfulSource && siteSettings.video_stream_hovod_api_url) {
+      try {
+        const cleanApi = siteSettings.video_stream_hovod_api_url.replace(
+          /\/+$/,
+          ""
+        );
+        const res = await fetch(`${cleanApi}/v1/playback/${videoId}`);
+        if (res.ok) {
+          const resJson = await res.json();
+          const manifestUrl = resJson?.data?.manifestUrl;
+          if (manifestUrl) {
+            await player.unload(false).catch(() => {});
+            await player.load(manifestUrl);
+            successfulSource = {
+              provider: "hovod",
+              manifestUri: manifestUrl,
+              poster: resJson?.data?.thumbnailUrl || null,
+            };
+          }
+        }
+      } catch (hovodErr) {
+        lastError = hovodErr;
+      }
+    }
+
     if (!successfulSource) {
       // eslint-disable-next-line no-console
       console.error("All video manifest sources failed to load:", {
@@ -627,8 +689,10 @@ function initializeVideoStreamPlayer(api) {
         siteSettings.video_stream_customer_subdomain
       );
       const bunnyDomain = cleanDomain(siteSettings.video_stream_bunny_hostname);
+      const hovodDomain = cleanDomain(siteSettings.video_stream_hovod_hostname);
+      const hovodApi = cleanDomain(siteSettings.video_stream_hovod_api_url);
 
-      if (!cloudflareDomain && !bunnyDomain) {
+      if (!cloudflareDomain && !bunnyDomain && !hovodDomain && !hovodApi) {
         // eslint-disable-next-line no-console
         console.error(
           "Video Stream: playback domain/hostname not configured in site settings"
@@ -655,7 +719,7 @@ function initializeVideoStreamPlayer(api) {
           siteSettings
         );
 
-        if (!sources.length) {
+        if (!sources.length && !siteSettings.video_stream_hovod_api_url) {
           renderErrorMessage(container, "Playback not configured", videoId);
           return;
         }

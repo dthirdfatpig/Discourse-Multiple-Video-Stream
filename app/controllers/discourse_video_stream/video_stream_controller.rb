@@ -38,6 +38,52 @@ module DiscourseVideoStream
       render json: context[:upload_details]
     end
 
+    def complete_upload
+      video_id = params[:video_id].presence || params[:id].presence
+      if video_id.blank?
+        render_json_error(I18n.t("video_stream.errors.upload_url"), status: 422)
+        return
+      end
+
+      context = CompleteUploadService.call(params: { video_id: video_id })
+
+      if context.failure?
+        render_json_error(
+          context[:error] || I18n.t("video_stream.errors.upload_url"),
+          status: context[:status] || 422,
+        )
+        return
+      end
+
+      render json: context[:result]
+    end
+
+    def direct_upload
+      file = params[:file]
+      if file.blank?
+        render_json_error(I18n.t("video_stream.upload_failed"), status: 422)
+        return
+      end
+
+      context = DirectUploadService.call(
+        params: {
+          file: file,
+          file_name: params[:file_name],
+          creator_id: current_user&.id,
+        },
+      )
+
+      if context.failure?
+        render_json_error(
+          context[:error] || I18n.t("video_stream.errors.upload_url"),
+          status: context[:status] || 422,
+        )
+        return
+      end
+
+      render json: context[:upload_result]
+    end
+
     def upload_url
       context = VideoUploadService.call(params: upload_request_headers)
 

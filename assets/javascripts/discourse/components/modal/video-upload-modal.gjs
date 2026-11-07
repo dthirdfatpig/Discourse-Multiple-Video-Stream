@@ -38,6 +38,7 @@ export default class VideoUploadModal extends Component {
   }
 
   activeUpload = null;
+  activeXhr = null;
   latestStreamMediaId = null;
 
   constructor() {
@@ -63,6 +64,9 @@ export default class VideoUploadModal extends Component {
     if (provider === "bunny") {
       return this.siteSettings.video_stream_bunny_hostname?.trim();
     }
+    if (provider === "hovod") {
+      return this.siteSettings.video_stream_hovod_hostname?.trim();
+    }
     return this.siteSettings.video_stream_customer_subdomain?.trim();
   }
 
@@ -75,6 +79,12 @@ export default class VideoUploadModal extends Component {
       return Boolean(
         this.siteSettings.video_stream_bunny_library_id &&
         this.siteSettings.video_stream_bunny_hostname
+      );
+    }
+    if (provider === "hovod") {
+      return Boolean(
+        this.siteSettings.video_stream_hovod_api_url &&
+        this.siteSettings.video_stream_hovod_hostname
       );
     }
     return Boolean(this.customerSubdomain);
@@ -230,6 +240,124 @@ export default class VideoUploadModal extends Component {
     this.args.closeModal?.();
   }
 
+  async _startHovodUpload(file) {
+    this.resetUploaderState({ abortUpload: true });
+    this.isUploading = true;
+    this.uploadProgress = 0;
+
+    try {
+      const prepareData = await ajax("/video-stream/prepare-upload.json", {
+        type: "POST",
+        data: {
+          file_name: file.name,
+          file_size: file.size,
+          file_type: file.type,
+        },
+      });
+
+      const videoId = prepareData.video_id;
+      const uploadUrl = prepareData.upload_url;
+
+      if (!uploadUrl || !videoId) {
+        throw new Error("Missing upload URL or video ID from server");
+      }
+
+      try {
+        await this._putFileWithProgress(uploadUrl, file);
+      } catch (putErr) {
+        // Direct storage PUT may encounter CORS restrictions. Fall back to Discourse proxy.
+        const formData = new FormData();
+        formData.append("file", file);
+        formData.append("file_name", file.name);
+        const proxyResult = await this._proxyUploadWithProgress(formData);
+        if (proxyResult?.video_id) {
+          this._handleUploadSuccess({ videoId: proxyResult.video_id });
+          return;
+        }
+        throw putErr;
+      }
+
+      await ajax("/video-stream/complete-upload.json", {
+        type: "POST",
+        data: {
+          video_id: videoId,
+        },
+      });
+
+      this._handleUploadSuccess({ videoId });
+    } catch (err) {
+      popupAjaxError(err);
+      this._handleUploadFailure(err);
+    }
+  }
+
+  _putFileWithProgress(url, file) {
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      this.activeXhr = xhr;
+
+      xhr.open("PUT", url, true);
+      xhr.setRequestHeader("Content-Type", file.type || "video/mp4");
+
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable && e.total > 0) {
+          this.uploadProgress = Math.round((e.loaded / e.total) * 100);
+        }
+      };
+
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          this.uploadProgress = 100;
+          resolve();
+        } else {
+          reject(new Error(`Storage PUT failed with status ${xhr.status}`));
+        }
+      };
+
+      xhr.onerror = () => reject(new Error("Storage PUT network or CORS error"));
+      xhr.onabort = () => reject(new Error("Storage PUT aborted"));
+
+      xhr.send(file);
+    });
+  }
+
+  _proxyUploadWithProgress(formData) {
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      this.activeXhr = xhr;
+
+      xhr.open("POST", "/video-stream/direct-upload.json", true);
+      const token = this._csrfToken();
+      if (token) {
+        xhr.setRequestHeader("X-CSRF-Token", token);
+      }
+
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable && e.total > 0) {
+          this.uploadProgress = Math.round((e.loaded / e.total) * 100);
+        }
+      };
+
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          this.uploadProgress = 100;
+          try {
+            resolve(JSON.parse(xhr.responseText));
+          } catch (_) {
+            resolve({});
+          }
+        } else {
+          reject(new Error(`Direct upload failed with status ${xhr.status}`));
+        }
+      };
+
+      xhr.onerror = () => reject(new Error("Direct upload network error"));
+      xhr.onabort = () => reject(new Error("Direct upload aborted"));
+
+      xhr.send(formData);
+    });
+  }
+
   async _startTusUpload(file) {
     this.resetUploaderState({ abortUpload: true });
     this.isUploading = true;
@@ -296,7 +424,6 @@ export default class VideoUploadModal extends Component {
     } else {
       uploadOptions.onBeforeRequest = (req) => {
         const url = req.getURL();
-        // Only add CSRF token for requests to Discourse backend (relative URLs)
         if (url && url.startsWith("/")) {
           const token = this._csrfToken();
           if (token) {
@@ -360,9 +487,11 @@ export default class VideoUploadModal extends Component {
   resetUploaderState({ abortUpload = false } = {}) {
     if (abortUpload) {
       this.activeUpload?.abort();
+      this.activeXhr?.abort();
     }
 
     this.activeUpload = null;
+    this.activeXhr = null;
     this.latestStreamMediaId = null;
     this.isUploading = false;
     this.uploadProgress = 0;
@@ -388,11 +517,16 @@ export default class VideoUploadModal extends Component {
       return null;
     }
 
-    // Load vendored tus-js-client if not already loaded
     if (!window.tus?.Upload) {
-      await loadScript(
-        "/plugins/discourse-video-stream/javascripts/tus.min.js"
-      );
+      try {
+        await loadScript(
+          "/plugins/multiple-video-stream/javascripts/tus.min.js"
+        );
+      } catch (_) {
+        await loadScript(
+          "/plugins/discourse-video-stream/javascripts/tus.min.js"
+        );
+      }
     }
 
     return window?.tus?.Upload || null;
@@ -429,8 +563,13 @@ export default class VideoUploadModal extends Component {
       return;
     }
 
+    const provider = this.siteSettings.video_stream_provider || "cloudflare";
     try {
-      this._startTusUpload(file);
+      if (provider === "hovod") {
+        this._startHovodUpload(file);
+      } else {
+        this._startTusUpload(file);
+      }
     } catch (error) {
       // eslint-disable-next-line no-console
       console.error("Video upload failed", error);

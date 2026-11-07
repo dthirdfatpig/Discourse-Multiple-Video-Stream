@@ -3,17 +3,22 @@ en:
     admin:
       site_settings:
         categories:
-          video_stream: "Bunny.net and Cloudflare Video Stream"
-          discourse_video_stream: "Bunny.net and Cloudflare Video Stream"
+          video_stream: "Multiple Video Stream"
+          discourse_video_stream: "Multiple Video Stream"
+          multiple_video_stream: "Multiple Video Stream"
   site_settings:
     video_stream_enabled: "Enable video uploads and playback"
-    video_stream_provider: "Active streaming service provider for new uploads (playback supports both Cloudflare and Bunny simultaneously)"
+    video_stream_provider: "Active streaming service provider for new uploads (playback supports Cloudflare, Bunny, and Hovod simultaneously)"
     video_stream_account_id: "Your Cloudflare Account ID (found in Cloudflare Dashboard URL)"
     video_stream_api_token: "Your Cloudflare API Token with Stream permissions"
     video_stream_customer_subdomain: "Your Cloudflare Stream playback subdomain (without https://, e.g. customer-xxxxx.cloudflarestream.com)"
     video_stream_bunny_library_id: "Your Bunny.net Stream Video Library ID (found under Stream > Library)"
     video_stream_bunny_api_key: "Your Bunny.net Stream API Key / AccessKey for the video library"
     video_stream_bunny_hostname: "Your Bunny.net Stream CDN / Pull Zone hostname (without https://, e.g. vz-xxxxxx.b-cdn.net)"
+    video_stream_hovod_api_url: "Your Hovod instance API URL (e.g. https://api.hovod.example.com or https://hovod.example.com)"
+    video_stream_hovod_api_key: "Your Hovod API Key (starts with mk_)"
+    video_stream_hovod_hostname: "Your Hovod CDN / S3 playback hostname or base domain (without https://, e.g. cdn.hovod.example.com)"
+    video_stream_hovod_organization_id: "Your Hovod Organization ID (optional, defaults to primary organization)"
     video_stream_allowed_extensions: "Comma-separated list of allowed video file extensions"
     video_stream_max_file_size: "Maximum allowed video file size in megabytes"
     video_stream_max_duration: "Maximum allowed video duration in seconds (e.g. 300 = 5 minutes, 3600 = 1 hour)"
@@ -24,5 +29,6 @@ en:
   video_stream:
     errors:
       misconfigured: "Video streaming is not configured yet. Please update the site settings and try again."
-      upload_url: "Unable to request an upload URL from Cloudflare Stream. Please try again later."
+      upload_url: "Unable to request an upload URL from the streaming provider. Please try again later."
       create_live_input: "Unable to create live stream. Please try again later."
+      hovod_no_live_stream: "Hovod does not support live stream broadcasting (VOD only). Please use Cloudflare or Bunny for live streams."

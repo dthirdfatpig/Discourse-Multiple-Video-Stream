@@ -150,5 +150,64 @@ RSpec.describe DiscourseVideoStream::VideoUploadService do
         )
       end
     end
+
+    context "when provider is hovod" do
+      let(:api_url) { "https://hovod.example.com" }
+      let(:api_key) { "mk_test_key" }
+
+      before do
+        SiteSetting.video_stream_provider = "hovod"
+        SiteSetting.video_stream_hovod_api_url = api_url
+        SiteSetting.video_stream_hovod_api_key = api_key
+      end
+
+      it "fails when Hovod credentials are missing" do
+        SiteSetting.video_stream_hovod_api_key = ""
+
+        context = described_class.call(params: service_params)
+
+        expect(context.failure?).to eq(true)
+        expect(context[:error]).to eq(I18n.t("video_stream.errors.misconfigured"))
+        expect(context[:status]).to eq(422)
+      end
+
+      it "creates asset and returns upload details for Hovod" do
+        create_response =
+          instance_double(
+            Faraday::Response,
+            status: 201,
+            body: { "data" => { "id" => "hovod-uid-123" } }.to_json,
+            headers: {},
+          )
+        upload_url_response =
+          instance_double(
+            Faraday::Response,
+            status: 200,
+            body: { "data" => { "uploadUrl" => "https://s3.example.com/sources/hovod-uid-123/input.mp4" } }.to_json,
+            headers: {},
+          )
+
+        allow(Faraday).to receive(:post).with(
+          "#{api_url}/v1/assets",
+          anything,
+          hash_including("Authorization" => "Bearer #{api_key}"),
+        ).and_return(create_response)
+
+        allow(Faraday).to receive(:post).with(
+          "#{api_url}/v1/assets/hovod-uid-123/upload-url",
+          nil,
+          hash_including("Authorization" => "Bearer #{api_key}"),
+        ).and_return(upload_url_response)
+
+        context = described_class.call(params: service_params)
+
+        expect(context.success?).to eq(true)
+        expect(context[:upload_details]).to include(
+          upload_url: "https://s3.example.com/sources/hovod-uid-123/input.mp4",
+          stream_media_id: "hovod-uid-123",
+          tus_resumable: "1.0.0",
+        )
+      end
+    end
   end
 end

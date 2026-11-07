@@ -24,8 +24,11 @@ module DiscourseVideoStream
     def fetch_live_input(params:)
       provider = SiteSetting.video_stream_provider.presence || "cloudflare"
 
-      if provider == "bunny"
+      case provider
+      when "bunny"
         fetch_bunny_live_input(params)
+      when "hovod"
+        context.fail!(error: I18n.t("video_stream.errors.hovod_no_live_stream"), status: 422)
       else
         fetch_cloudflare_live_input(params)
       end

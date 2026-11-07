@@ -1,26 +1,25 @@
 # frozen_string_literal: true
 
-# name: discourse-video-stream
-# about: Integrates Cloudflare and Bunny.net Video Stream for video uploads and playback in Discourse.
+# name: multiple-video-stream
+# about: Multi-provider video streaming plugin for Discourse integrating Cloudflare Stream, Bunny.net, and Hovod.
 # meta_topic_id: TODO
-# version: 0.0.15
+# version: 0.0.1.beta
 # authors: dthirdfatpig
 # url: https://github.com/dthirdfatpig/discourse-video-stream
 # required_version: 2.7.0
 
 enabled_site_setting :video_stream_enabled
 
-# Cloudflare Stream API settings
 register_asset "stylesheets/common/video-stream.scss"
 
 module ::DiscourseVideoStream
-  PLUGIN_NAME = "discourse-video-stream"
+  PLUGIN_NAME = "multiple-video-stream"
 end
 
 require_relative "lib/discourse_video_stream/engine"
 
 def humanized_name
-  "Bunny.net and Cloudflare Video Stream"
+  "Multiple Video Stream"
 end
 
 after_initialize do

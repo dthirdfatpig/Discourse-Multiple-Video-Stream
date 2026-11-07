@@ -180,5 +180,17 @@ RSpec.describe DiscourseVideoStream::LiveStreamService do
         expect(result[:status]).to eq(422)
       end
     end
+
+    context "when provider is hovod" do
+      before do
+        SiteSetting.video_stream_provider = "hovod"
+      end
+
+      it "fails with hovod_no_live_stream error" do
+        expect(result).to be_failure
+        expect(result[:error]).to eq(I18n.t("video_stream.errors.hovod_no_live_stream"))
+        expect(result[:status]).to eq(422)
+      end
+    end
   end
 end

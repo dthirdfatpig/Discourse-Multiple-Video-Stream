@@ -5,7 +5,7 @@ import VideoUploadModal from "../discourse/components/modal/video-upload-modal";
 const BYTES_IN_MEGABYTE = 1_000_000;
 
 /**
- * Check if a file should be intercepted and uploaded to Cloudflare Stream or Bunny.net Stream
+ * Check if a file should be intercepted and uploaded to the streaming service
  * @param {File} file
  * @param {object} siteSettings
  * @returns {boolean}
@@ -24,6 +24,13 @@ function shouldInterceptUpload(file, siteSettings) {
     if (
       !siteSettings.video_stream_bunny_library_id ||
       !siteSettings.video_stream_bunny_hostname
+    ) {
+      return false;
+    }
+  } else if (provider === "hovod") {
+    if (
+      !siteSettings.video_stream_hovod_api_url ||
+      !siteSettings.video_stream_hovod_hostname
     ) {
       return false;
     }

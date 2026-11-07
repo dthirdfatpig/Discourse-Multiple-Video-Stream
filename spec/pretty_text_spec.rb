@@ -156,6 +156,15 @@ describe PrettyText do
       expect(cooked).to include('data-provider="cloudflare"')
     end
 
+    it "preserves hovod provider attribute when present in BBCode" do
+      markdown = '[video-stream id="hovod123" provider="hovod"][/video-stream]'
+      cooked = PrettyText.cook(markdown)
+
+      expect(cooked).to include('<div class="video-stream-container"')
+      expect(cooked).to include('data-video-id="hovod123"')
+      expect(cooked).to include('data-provider="hovod"')
+    end
+
     it "ignores invalid provider attributes" do
       markdown = '[video-stream id="test123" provider="invalid"][/video-stream]'
       cooked = PrettyText.cook(markdown)

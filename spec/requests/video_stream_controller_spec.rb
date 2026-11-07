@@ -97,13 +97,10 @@ RSpec.describe DiscourseVideoStream::VideoStreamController do
       context =
         Service::Base::Context.new(
           upload_details: {
-            provider: "bunny",
-            endpoint: "https://video.bunnycdn.com/tusupload",
-            video_id: "guid-123",
-            headers: {
-              "LibraryId" => "123",
-              "VideoId" => "guid-123",
-            },
+            provider: "hovod",
+            upload_url: "https://s3.example.com/sources/hovod123/input.mp4",
+            video_id: "hovod123",
+            upload_method: "PUT",
           },
         )
       allow(DiscourseVideoStream::PrepareUploadService).to receive(:call).and_return(context)
@@ -117,8 +114,8 @@ RSpec.describe DiscourseVideoStream::VideoStreamController do
            }
 
       expect(response.status).to eq(200)
-      expect(response.parsed_body["provider"]).to eq("bunny")
-      expect(response.parsed_body["video_id"]).to eq("guid-123")
+      expect(response.parsed_body["provider"]).to eq("hovod")
+      expect(response.parsed_body["video_id"]).to eq("hovod123")
       expect(DiscourseVideoStream::PrepareUploadService).to have_received(:call).with(
         satisfy do |args|
           expect(args[:params]).to include(
@@ -142,6 +139,26 @@ RSpec.describe DiscourseVideoStream::VideoStreamController do
 
       expect(response.status).to eq(422)
       expect(response.parsed_body["errors"].first).to eq("cannot prepare")
+    end
+  end
+
+  describe "POST /video-stream/complete-upload" do
+    it "requires login" do
+      post "/video-stream/complete-upload.json", params: { video_id: "hovod123" }
+
+      expect(response.status).to eq(403)
+    end
+
+    it "calls CompleteUploadService and returns result" do
+      context = Service::Base::Context.new(result: { success: true, video_id: "hovod123" })
+      allow(DiscourseVideoStream::CompleteUploadService).to receive(:call).and_return(context)
+
+      sign_in(user)
+      post "/video-stream/complete-upload.json", params: { video_id: "hovod123" }
+
+      expect(response.status).to eq(200)
+      expect(response.parsed_body["success"]).to eq(true)
+      expect(response.parsed_body["video_id"]).to eq("hovod123")
     end
   end
 end

@@ -134,4 +134,82 @@ RSpec.describe DiscourseVideoStream::PrepareUploadService do
       expect(context[:status]).to eq(422)
     end
   end
+
+  context "when provider is hovod" do
+    let(:api_url) { "https://hovod.example.com" }
+    let(:api_key) { "mk_test_api_key_12345" }
+
+    before do
+      SiteSetting.video_stream_provider = "hovod"
+      SiteSetting.video_stream_hovod_api_url = api_url
+      SiteSetting.video_stream_hovod_api_key = api_key
+    end
+
+    it "creates asset and returns presigned upload URL details" do
+      create_asset_response =
+        instance_double(
+          Faraday::Response,
+          status: 201,
+          body: { "data" => { "id" => "hovodAsset12", "playbackId" => "hovodPlay16chars", "status" => "created" } }.to_json,
+          headers: {},
+        )
+
+      upload_url_response =
+        instance_double(
+          Faraday::Response,
+          status: 200,
+          body: { "data" => { "uploadUrl" => "https://s3.example.com/sources/hovodAsset12/input.mp4?sig=abc", "method" => "PUT" } }.to_json,
+          headers: {},
+        )
+
+      allow(Faraday).to receive(:post).with(
+        "#{api_url}/v1/assets",
+        anything,
+        hash_including("Authorization" => "Bearer #{api_key}"),
+      ).and_return(create_asset_response)
+
+      allow(Faraday).to receive(:post).with(
+        "#{api_url}/v1/assets/hovodAsset12/upload-url",
+        nil,
+        hash_including("Authorization" => "Bearer #{api_key}"),
+      ).and_return(upload_url_response)
+
+      context = described_class.call(params: service_params)
+
+      expect(context.success?).to eq(true)
+      expect(context[:upload_details][:provider]).to eq("hovod")
+      expect(context[:upload_details][:video_id]).to eq("hovodAsset12")
+      expect(context[:upload_details][:playback_id]).to eq("hovodPlay16chars")
+      expect(context[:upload_details][:upload_url]).to include("https://s3.example.com/sources/hovodAsset12/input.mp4")
+      expect(context[:upload_details][:upload_method]).to eq("PUT")
+    end
+
+    it "fails when Hovod credentials are missing" do
+      SiteSetting.video_stream_hovod_api_key = ""
+
+      context = described_class.call(params: service_params)
+
+      expect(context.failure?).to eq(true)
+      expect(context[:error]).to eq(I18n.t("video_stream.errors.misconfigured"))
+      expect(context[:status]).to eq(422)
+    end
+
+    it "fails when Hovod asset creation fails" do
+      error_response =
+        instance_double(
+          Faraday::Response,
+          status: 401,
+          body: { "error" => "Unauthorized" }.to_json,
+          headers: {},
+        )
+
+      allow(Faraday).to receive(:post).and_return(error_response)
+
+      context = described_class.call(params: service_params)
+
+      expect(context.failure?).to eq(true)
+      expect(context[:error]).to eq(I18n.t("video_stream.errors.upload_url"))
+      expect(context[:status]).to eq(422)
+    end
+  end
 end

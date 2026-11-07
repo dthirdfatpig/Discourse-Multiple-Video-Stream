@@ -14,6 +14,12 @@ function isProviderConfigured(siteSettings) {
       siteSettings.video_stream_bunny_hostname
     );
   }
+  if (provider === "hovod") {
+    return Boolean(
+      siteSettings.video_stream_hovod_api_url &&
+      siteSettings.video_stream_hovod_hostname
+    );
+  }
 
   return Boolean(siteSettings.video_stream_customer_subdomain);
 }
@@ -46,9 +52,11 @@ function initializeVideoUploader(api) {
       });
     },
     condition: () => {
+      const provider = siteSettings.video_stream_provider || "cloudflare";
       return (
         isProviderConfigured(siteSettings) &&
-        siteSettings.video_stream_enable_live_streams
+        siteSettings.video_stream_enable_live_streams &&
+        provider !== "hovod"
       );
     },
   });
