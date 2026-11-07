@@ -5,7 +5,7 @@
 # meta_topic_id: TODO
 # version: 0.0.1.beta
 # authors: dthirdfatpig
-# url: https://github.com/dthirdfatpig/discourse-video-stream
+# url: https://github.com/dthirdfatpig/Discourse-Multiple-Video-Stream
 # required_version: 2.7.0
 
 enabled_site_setting :video_stream_enabled
