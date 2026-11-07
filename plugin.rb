@@ -1,9 +1,9 @@
 # frozen_string_literal: true
 
-# name: multiple-video-stream
+# name: discourse-multiple-video-stream
 # about: Multi-provider video streaming plugin for Discourse integrating Cloudflare Stream, Bunny.net, and Hovod.
 # meta_topic_id: TODO
-# version: 0.0.1.beta
+# version: 0.0.2.beta
 # authors: dthirdfatpig
 # url: https://github.com/dthirdfatpig/Discourse-Multiple-Video-Stream
 # required_version: 2.7.0
@@ -13,7 +13,7 @@ enabled_site_setting :multiple_video_stream_enabled
 register_asset "stylesheets/common/video-stream.scss"
 
 module ::DiscourseMultipleVideoStream
-  PLUGIN_NAME = "multiple-video-stream"
+  PLUGIN_NAME = "discourse-multiple-video-stream"
 end
 
 require_relative "lib/discourse_multiple_video_stream/engine"
@@ -27,7 +27,56 @@ def humanized_name
   "Multiple Video Stream"
 end
 
+# List of plugin settings defined in config/settings.yml
+PLUGIN_SETTING_NAMES = %i[
+  multiple_video_stream_enabled
+  multiple_video_stream_provider
+  multiple_video_stream_hovod_api_url
+  multiple_video_stream_hovod_api_key
+  multiple_video_stream_hovod_hostname
+  multiple_video_stream_hovod_organization_id
+  multiple_video_stream_account_id
+  multiple_video_stream_api_token
+  multiple_video_stream_customer_subdomain
+  multiple_video_stream_bunny_library_id
+  multiple_video_stream_bunny_api_key
+  multiple_video_stream_bunny_hostname
+  multiple_video_stream_allowed_extensions
+  multiple_video_stream_max_file_size
+  multiple_video_stream_max_duration
+  multiple_video_stream_keep_original_name
+  multiple_video_stream_intercept_native_uploads
+  multiple_video_stream_intercept_threshold_mb
+  multiple_video_stream_enable_live_streams
+].freeze
+
+# Ensure settings are mapped in SiteSetting.plugins for discourse admin filtering
+if defined?(SiteSetting) && SiteSetting.respond_to?(:plugins)
+  PLUGIN_SETTING_NAMES.each do |s|
+    SiteSetting.plugins[s] = "discourse-multiple-video-stream"
+  end
+end
+
+# Provide settings to Discourse AdminPluginSerializer
+def plugin_settings
+  @plugin_settings ||= SiteSetting.plugins.select do |setting, plugin_name|
+    PLUGIN_SETTING_NAMES.include?(setting) ||
+      ["discourse-multiple-video-stream", "Discourse-Multiple-Video-Stream", "multiple-video-stream", name, directory_name].include?(plugin_name.to_s)
+  end
+end
+
+def any_settings?
+  true
+end
+
 after_initialize do
   register_svg_icon("video")
   register_svg_icon("tower-broadcast")
+
+  # Keep plugin settings mapped across directory and metadata name variations
+  if defined?(SiteSetting) && SiteSetting.respond_to?(:plugins)
+    PLUGIN_SETTING_NAMES.each do |s|
+      SiteSetting.plugins[s] = "discourse-multiple-video-stream"
+    end
+  end
 end
