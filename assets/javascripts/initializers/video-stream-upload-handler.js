@@ -4,6 +4,28 @@ import VideoUploadModal from "../discourse/components/modal/video-upload-modal";
 
 const BYTES_IN_MEGABYTE = 1_000_000;
 
+function isEnabled(siteSettings) {
+  return Boolean(
+    siteSettings.multiple_video_stream_enabled ||
+      siteSettings.video_stream_enabled
+  );
+}
+
+function shouldIntercept(siteSettings) {
+  if (siteSettings.multiple_video_stream_intercept_native_uploads !== undefined) {
+    return Boolean(siteSettings.multiple_video_stream_intercept_native_uploads);
+  }
+  return Boolean(siteSettings.video_stream_intercept_native_uploads);
+}
+
+function getProvider(siteSettings) {
+  const p =
+    siteSettings.multiple_video_stream_provider ||
+    siteSettings.video_stream_provider ||
+    "Cloudflare";
+  return String(p).trim().toLowerCase();
+}
+
 /**
  * Check if a file should be intercepted and uploaded to the streaming service
  * @param {File} file
@@ -11,37 +33,46 @@ const BYTES_IN_MEGABYTE = 1_000_000;
  * @returns {boolean}
  */
 function shouldInterceptUpload(file, siteSettings) {
-  if (!siteSettings.video_stream_enabled) {
+  if (!isEnabled(siteSettings)) {
     return false;
   }
 
-  if (!siteSettings.video_stream_intercept_native_uploads) {
+  if (!shouldIntercept(siteSettings)) {
     return false;
   }
 
-  const provider = siteSettings.video_stream_provider || "cloudflare";
+  const provider = getProvider(siteSettings);
   if (provider === "bunny") {
-    if (
-      !siteSettings.video_stream_bunny_library_id ||
-      !siteSettings.video_stream_bunny_hostname
-    ) {
+    const lib =
+      siteSettings.multiple_video_stream_bunny_library_id ||
+      siteSettings.video_stream_bunny_library_id;
+    const host =
+      siteSettings.multiple_video_stream_bunny_hostname ||
+      siteSettings.video_stream_bunny_hostname;
+    if (!lib || !host) {
       return false;
     }
   } else if (provider === "hovod") {
-    if (
-      !siteSettings.video_stream_hovod_api_url ||
-      !siteSettings.video_stream_hovod_hostname
-    ) {
+    const url =
+      siteSettings.multiple_video_stream_hovod_api_url ||
+      siteSettings.video_stream_hovod_api_url;
+    if (!url) {
       return false;
     }
   } else {
-    if (!siteSettings.video_stream_customer_subdomain) {
+    const sub =
+      siteSettings.multiple_video_stream_customer_subdomain ||
+      siteSettings.video_stream_customer_subdomain;
+    if (!sub) {
       return false;
     }
   }
 
   const thresholdMb =
-    Number(siteSettings.video_stream_intercept_threshold_mb) || 0;
+    Number(
+      siteSettings.multiple_video_stream_intercept_threshold_mb ||
+        siteSettings.video_stream_intercept_threshold_mb
+    ) || 0;
   const thresholdBytes = thresholdMb * BYTES_IN_MEGABYTE;
 
   return (file.size || 0) >= thresholdBytes;
@@ -53,8 +84,11 @@ function shouldInterceptUpload(file, siteSettings) {
  * @returns {string[]}
  */
 function getAllowedExtensions(siteSettings) {
+  const exts =
+    siteSettings.multiple_video_stream_allowed_extensions ||
+    siteSettings.video_stream_allowed_extensions;
   return (
-    siteSettings.video_stream_allowed_extensions
+    exts
       ?.split(",")
       .map((ext) => ext.trim().toLowerCase())
       .filter(Boolean) ?? []
@@ -86,7 +120,7 @@ function isMatchingVideo(file, siteSettings) {
  * pass through to Discourse's native upload pipeline without hanging.
  */
 class VideoStreamUploadPreProcessor extends UploadPreProcessorPlugin {
-  static pluginId = "video-stream-upload-preprocessor";
+  static pluginId = "multiple-video-stream-upload-preprocessor";
 
   constructor(uppy, opts) {
     super(uppy, opts);
@@ -98,44 +132,56 @@ class VideoStreamUploadPreProcessor extends UploadPreProcessorPlugin {
   }
 
   install() {
-    this._install(this._processFiles);
+    this.uppy.addPreProcessor(this._processFiles);
   }
 
   uninstall() {
-    this._uninstall(this._processFiles);
+    this.uppy.removePreProcessor(this._processFiles);
   }
 
-  _processFiles(fileIds) {
-    const promises = (fileIds || []).map((fileId) => {
-      const file = this._getFile(fileId);
+  _emitComplete(file, passThrough = false) {
+    if (!passThrough) {
+      this.uppy.emit("preprocess-progress", file, {
+        mode: "determinate",
+        message: "video_stream.upload_progress",
+        value: 1,
+      });
+    }
+
+    this.uppy.emit("preprocess-complete", file);
+    return Promise.resolve();
+  }
+
+  _processFiles(fileIDs) {
+    const promises = fileIDs.map((fileID) => {
+      const file = this.uppy.getFile(fileID);
       if (!file) {
         return Promise.resolve();
       }
 
-      const fileObj = file.data || file;
-      const isVideo = isMatchingVideo(file, this.siteSettings);
-      const shouldIntercept =
-        isVideo && shouldInterceptUpload(fileObj, this.siteSettings);
+      if (
+        isMatchingVideo(file, this.siteSettings) &&
+        shouldInterceptUpload(file.data, this.siteSettings)
+      ) {
+        // Remove intercepted file from Uppy queue so native upload does not trigger
+        this.uppy.removeFile(fileID);
 
-      if (shouldIntercept) {
+        // Open modal preloaded with intercepted file
         this.modal.show(VideoUploadModal, {
           model: {
             toolbarEvent: {
               addText: (text) => {
-                const reply = this.composerModel?.reply || "";
-                this.composerModel?.set?.(
-                  "reply",
-                  reply ? `${reply}\n\n${text}` : text
-                );
+                const composer = this.composerModel;
+                if (composer) {
+                  composer.appendMarkdown(text);
+                }
               },
             },
-            preselectedFile: fileObj,
+            preselectedFile: file.data,
           },
         });
 
-        this._emitComplete(file, true);
-        this.appEvents?.trigger?.("composer:cancel-upload", { fileId });
-        return Promise.resolve();
+        return this._emitComplete(file, false);
       }
 
       // Allow file to continue through normal upload pipeline
@@ -167,7 +213,7 @@ function initializeVideoUploadHandler(api) {
 }
 
 export default {
-  name: "video-stream-upload-handler",
+  name: "multiple-video-stream-upload-handler",
   initialize() {
     withPluginApi(initializeVideoUploadHandler);
   },

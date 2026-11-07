@@ -2,7 +2,7 @@
 
 require "rails_helper"
 
-RSpec.describe DiscourseVideoStream::PrepareUploadService do
+RSpec.describe DiscourseMultipleVideoStream::PrepareUploadService do
   let(:service_params) do
     {
       file_name: "test-clip.mp4",
@@ -12,11 +12,11 @@ RSpec.describe DiscourseVideoStream::PrepareUploadService do
     }
   end
 
-  context "when provider is cloudflare" do
+  context "when provider is Cloudflare" do
     before do
-      SiteSetting.video_stream_provider = "cloudflare"
-      SiteSetting.video_stream_account_id = "cf-acc-123"
-      SiteSetting.video_stream_api_token = "cf-token"
+      SiteSetting.multiple_video_stream_provider = "Cloudflare"
+      SiteSetting.multiple_video_stream_account_id = "cf-acc-123"
+      SiteSetting.multiple_video_stream_api_token = "cf-token"
     end
 
     it "returns cloudflare upload endpoint" do
@@ -25,29 +25,29 @@ RSpec.describe DiscourseVideoStream::PrepareUploadService do
       expect(context.success?).to eq(true)
       expect(context[:upload_details]).to eq(
         provider: "cloudflare",
-        endpoint: "/video-stream/upload-url.json",
+        endpoint: "/multiple-video-stream/upload-url.json",
       )
     end
 
     it "fails when credentials are missing" do
-      SiteSetting.video_stream_api_token = ""
+      SiteSetting.multiple_video_stream_api_token = ""
 
       context = described_class.call(params: service_params)
 
       expect(context.failure?).to eq(true)
-      expect(context[:error]).to eq(I18n.t("video_stream.errors.misconfigured"))
+      expect(context[:error]).to eq(I18n.t("multiple_video_stream.errors.misconfigured"))
       expect(context[:status]).to eq(422)
     end
   end
 
-  context "when provider is bunny" do
+  context "when provider is Bunny" do
     let(:library_id) { "99999" }
     let(:api_key) { "bunny-secret-api-key" }
 
     before do
-      SiteSetting.video_stream_provider = "bunny"
-      SiteSetting.video_stream_bunny_library_id = library_id
-      SiteSetting.video_stream_bunny_api_key = api_key
+      SiteSetting.multiple_video_stream_provider = "Bunny"
+      SiteSetting.multiple_video_stream_bunny_library_id = library_id
+      SiteSetting.multiple_video_stream_bunny_api_key = api_key
     end
 
     it "creates video on Bunny and returns client TUS credentials" do
@@ -79,8 +79,8 @@ RSpec.describe DiscourseVideoStream::PrepareUploadService do
       expect(context[:upload_details][:headers]["AuthorizationExpire"]).to be_present
     end
 
-    it "uses original file name when video_stream_keep_original_name is enabled" do
-      SiteSetting.video_stream_keep_original_name = true
+    it "uses original file name when keep_original_name is enabled" do
+      SiteSetting.multiple_video_stream_keep_original_name = true
 
       create_response =
         instance_double(
@@ -107,12 +107,12 @@ RSpec.describe DiscourseVideoStream::PrepareUploadService do
     end
 
     it "fails when Bunny credentials are missing" do
-      SiteSetting.video_stream_bunny_library_id = ""
+      SiteSetting.multiple_video_stream_bunny_library_id = ""
 
       context = described_class.call(params: service_params)
 
       expect(context.failure?).to eq(true)
-      expect(context[:error]).to eq(I18n.t("video_stream.errors.misconfigured"))
+      expect(context[:error]).to eq(I18n.t("multiple_video_stream.errors.misconfigured"))
       expect(context[:status]).to eq(422)
     end
 
@@ -130,19 +130,19 @@ RSpec.describe DiscourseVideoStream::PrepareUploadService do
       context = described_class.call(params: service_params)
 
       expect(context.failure?).to eq(true)
-      expect(context[:error]).to eq(I18n.t("video_stream.errors.upload_url"))
+      expect(context[:error]).to eq(I18n.t("multiple_video_stream.errors.upload_url"))
       expect(context[:status]).to eq(422)
     end
   end
 
-  context "when provider is hovod" do
+  context "when provider is Hovod" do
     let(:api_url) { "https://hovod.example.com" }
     let(:api_key) { "mk_test_api_key_12345" }
 
     before do
-      SiteSetting.video_stream_provider = "hovod"
-      SiteSetting.video_stream_hovod_api_url = api_url
-      SiteSetting.video_stream_hovod_api_key = api_key
+      SiteSetting.multiple_video_stream_provider = "Hovod"
+      SiteSetting.multiple_video_stream_hovod_api_url = api_url
+      SiteSetting.multiple_video_stream_hovod_api_key = api_key
     end
 
     it "creates asset and returns presigned upload URL details" do
@@ -185,12 +185,12 @@ RSpec.describe DiscourseVideoStream::PrepareUploadService do
     end
 
     it "fails when Hovod credentials are missing" do
-      SiteSetting.video_stream_hovod_api_key = ""
+      SiteSetting.multiple_video_stream_hovod_api_key = ""
 
       context = described_class.call(params: service_params)
 
       expect(context.failure?).to eq(true)
-      expect(context[:error]).to eq(I18n.t("video_stream.errors.misconfigured"))
+      expect(context[:error]).to eq(I18n.t("multiple_video_stream.errors.misconfigured"))
       expect(context[:status]).to eq(422)
     end
 
@@ -208,7 +208,7 @@ RSpec.describe DiscourseVideoStream::PrepareUploadService do
       context = described_class.call(params: service_params)
 
       expect(context.failure?).to eq(true)
-      expect(context[:error]).to eq(I18n.t("video_stream.errors.upload_url"))
+      expect(context[:error]).to eq(I18n.t("multiple_video_stream.errors.upload_url"))
       expect(context[:status]).to eq(422)
     end
   end

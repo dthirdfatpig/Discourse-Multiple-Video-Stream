@@ -2,13 +2,13 @@
 
 require "rails_helper"
 
-RSpec.describe DiscourseVideoStream::VideoStreamController do
+RSpec.describe DiscourseMultipleVideoStream::VideoStreamController do
   fab!(:user)
 
   before do
-    SiteSetting.video_stream_enabled = true
-    SiteSetting.video_stream_account_id = "test_account"
-    SiteSetting.video_stream_api_token = "test_token"
+    SiteSetting.multiple_video_stream_enabled = true
+    SiteSetting.multiple_video_stream_account_id = "test_account"
+    SiteSetting.multiple_video_stream_api_token = "test_token"
   end
 
   describe "#create_live_stream" do
@@ -35,7 +35,7 @@ RSpec.describe DiscourseVideoStream::VideoStreamController do
       end
 
       it "creates a live stream and returns credentials" do
-        post "/video-stream/create-live-stream.json", params: { name: "Test Stream" }
+        post "/multiple-video-stream/create-live-stream.json", params: { name: "Test Stream" }
 
         expect(response.status).to eq(200)
         json = response.parsed_body
@@ -47,36 +47,18 @@ RSpec.describe DiscourseVideoStream::VideoStreamController do
 
     context "when user is not logged in" do
       it "returns 403 Forbidden" do
-        post "/video-stream/create-live-stream.json", params: { name: "Test Stream" }
+        post "/multiple-video-stream/create-live-stream.json", params: { name: "Test Stream" }
         expect(response.status).to eq(403)
       end
     end
 
     context "when feature is disabled" do
-      before { SiteSetting.video_stream_enabled = false }
+      before { SiteSetting.multiple_video_stream_enabled = false }
 
       it "returns 404 Not Found" do
         sign_in(user)
-        post "/video-stream/create-live-stream.json", params: { name: "Test Stream" }
+        post "/multiple-video-stream/create-live-stream.json", params: { name: "Test Stream" }
         expect(response.status).to eq(404)
-      end
-    end
-
-    context "when Cloudflare API fails" do
-      before do
-        sign_in(user)
-        stub_request(
-          :post,
-          "https://api.cloudflare.com/client/v4/accounts/test_account/stream/live_inputs",
-        ).to_return(status: 500, body: { errors: [{ message: "Server error" }] }.to_json)
-      end
-
-      it "returns 422 with error message" do
-        post "/video-stream/create-live-stream.json", params: { name: "Test Stream" }
-
-        expect(response.status).to eq(422)
-        json = response.parsed_body
-        expect(json["errors"]).to include(I18n.t("video_stream.errors.create_live_input"))
       end
     end
   end

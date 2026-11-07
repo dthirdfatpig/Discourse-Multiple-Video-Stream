@@ -2,26 +2,46 @@ import { withPluginApi } from "discourse/lib/plugin-api";
 import LiveStreamModal from "../discourse/components/modal/live-stream-modal";
 import VideoUploadModal from "../discourse/components/modal/video-upload-modal";
 
+function isEnabled(siteSettings) {
+  return Boolean(
+    siteSettings.multiple_video_stream_enabled ||
+      siteSettings.video_stream_enabled
+  );
+}
+
+function getProvider(siteSettings) {
+  const p =
+    siteSettings.multiple_video_stream_provider ||
+    siteSettings.video_stream_provider ||
+    "Cloudflare";
+  return String(p).trim().toLowerCase();
+}
+
 function isProviderConfigured(siteSettings) {
-  if (!siteSettings.video_stream_enabled) {
+  if (!isEnabled(siteSettings)) {
     return false;
   }
 
-  const provider = siteSettings.video_stream_provider || "cloudflare";
+  const provider = getProvider(siteSettings);
   if (provider === "bunny") {
     return Boolean(
-      siteSettings.video_stream_bunny_library_id &&
-      siteSettings.video_stream_bunny_hostname
+      (siteSettings.multiple_video_stream_bunny_library_id ||
+        siteSettings.video_stream_bunny_library_id) &&
+        (siteSettings.multiple_video_stream_bunny_hostname ||
+          siteSettings.video_stream_bunny_hostname)
     );
   }
   if (provider === "hovod") {
     return Boolean(
-      siteSettings.video_stream_hovod_api_url &&
-      siteSettings.video_stream_hovod_hostname
+      siteSettings.multiple_video_stream_hovod_api_url ||
+        siteSettings.video_stream_hovod_api_url
     );
   }
 
-  return Boolean(siteSettings.video_stream_customer_subdomain);
+  return Boolean(
+    siteSettings.multiple_video_stream_customer_subdomain ||
+      siteSettings.video_stream_customer_subdomain
+  );
 }
 
 function initializeVideoUploader(api) {
@@ -30,7 +50,7 @@ function initializeVideoUploader(api) {
 
   api.addComposerToolbarPopupMenuOption({
     icon: "video",
-    label: "video_stream.upload_video",
+    label: "multiple_video_stream.upload_video",
     action: (toolbarEvent) => {
       modal.show(VideoUploadModal, {
         model: {
@@ -43,7 +63,7 @@ function initializeVideoUploader(api) {
 
   api.addComposerToolbarPopupMenuOption({
     icon: "tower-broadcast",
-    label: "video_stream.create_live_stream",
+    label: "multiple_video_stream.create_live_stream",
     action: (toolbarEvent) => {
       modal.show(LiveStreamModal, {
         model: {
@@ -52,10 +72,14 @@ function initializeVideoUploader(api) {
       });
     },
     condition: () => {
-      const provider = siteSettings.video_stream_provider || "cloudflare";
+      const provider = getProvider(siteSettings);
+      const liveStreamsEnabled = Boolean(
+        siteSettings.multiple_video_stream_enable_live_streams ||
+          siteSettings.video_stream_enable_live_streams
+      );
       return (
         isProviderConfigured(siteSettings) &&
-        siteSettings.video_stream_enable_live_streams &&
+        liveStreamsEnabled &&
         provider !== "hovod"
       );
     },
@@ -63,7 +87,7 @@ function initializeVideoUploader(api) {
 }
 
 export default {
-  name: "video-stream-composer",
+  name: "multiple-video-stream-composer",
   initialize() {
     withPluginApi(initializeVideoUploader);
   },

@@ -8,15 +8,20 @@
 # url: https://github.com/dthirdfatpig/Discourse-Multiple-Video-Stream
 # required_version: 2.7.0
 
-enabled_site_setting :video_stream_enabled
+enabled_site_setting :multiple_video_stream_enabled
 
 register_asset "stylesheets/common/video-stream.scss"
 
-module ::DiscourseVideoStream
+module ::DiscourseMultipleVideoStream
   PLUGIN_NAME = "multiple-video-stream"
 end
 
-require_relative "lib/discourse_video_stream/engine"
+require_relative "lib/discourse_multiple_video_stream/engine"
+require_relative "lib/discourse_multiple_video_stream/config"
+
+unless defined?(::DiscourseVideoStream)
+  ::DiscourseVideoStream = ::DiscourseMultipleVideoStream
+end
 
 def humanized_name
   "Multiple Video Stream"

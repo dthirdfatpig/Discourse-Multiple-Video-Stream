@@ -13,7 +13,7 @@ import { i18n } from "discourse-i18n";
 
 const BYTES_IN_MEGABYTE = 1_000_000;
 const DEFAULT_TUS_CHUNK_SIZE = 52_428_800; // 50 MB, divisible by 256 KiB
-const TUS_ENDPOINT = "/video-stream/upload-url.json";
+const TUS_ENDPOINT = "/multiple-video-stream/upload-url.json";
 
 /**
  * @component video-upload-modal
@@ -33,8 +33,21 @@ export default class VideoUploadModal extends Component {
    */
   @tracked uploadProgress = 0;
 
+  getSetting(name) {
+    const mVal = this.siteSettings[`multiple_video_stream_${name}`];
+    if (mVal !== undefined && mVal !== "") {
+      return mVal;
+    }
+    return this.siteSettings[`video_stream_${name}`];
+  }
+
+  get provider() {
+    const p = this.getSetting("provider") || "Cloudflare";
+    return String(p).trim().toLowerCase();
+  }
+
   get keepOriginalName() {
-    return Boolean(this.siteSettings.video_stream_keep_original_name);
+    return Boolean(this.getSetting("keep_original_name"));
   }
 
   activeUpload = null;
@@ -60,32 +73,30 @@ export default class VideoUploadModal extends Component {
    * @returns {string|undefined}
    */
   get customerSubdomain() {
-    const provider = this.siteSettings.video_stream_provider || "cloudflare";
-    if (provider === "bunny") {
-      return this.siteSettings.video_stream_bunny_hostname?.trim();
+    if (this.provider === "bunny") {
+      return this.getSetting("bunny_hostname")?.trim();
     }
-    if (provider === "hovod") {
-      return this.siteSettings.video_stream_hovod_hostname?.trim();
+    if (this.provider === "hovod") {
+      return (
+        this.getSetting("hovod_hostname")?.trim() ||
+        this.getSetting("hovod_api_url")?.trim()
+      );
     }
-    return this.siteSettings.video_stream_customer_subdomain?.trim();
+    return this.getSetting("customer_subdomain")?.trim();
   }
 
   /**
    * @returns {boolean}
    */
   get isConfigured() {
-    const provider = this.siteSettings.video_stream_provider || "cloudflare";
-    if (provider === "bunny") {
+    if (this.provider === "bunny") {
       return Boolean(
-        this.siteSettings.video_stream_bunny_library_id &&
-        this.siteSettings.video_stream_bunny_hostname
+        this.getSetting("bunny_library_id") &&
+          this.getSetting("bunny_hostname")
       );
     }
-    if (provider === "hovod") {
-      return Boolean(
-        this.siteSettings.video_stream_hovod_api_url &&
-        this.siteSettings.video_stream_hovod_hostname
-      );
+    if (this.provider === "hovod") {
+      return Boolean(this.getSetting("hovod_api_url"));
     }
     return Boolean(this.customerSubdomain);
   }
@@ -94,8 +105,9 @@ export default class VideoUploadModal extends Component {
    * @returns {string[]}
    */
   get allowedExtensions() {
+    const raw = this.getSetting("allowed_extensions");
     return (
-      this.siteSettings.video_stream_allowed_extensions
+      raw
         ?.split(",")
         .map((ext) => ext.trim().toLowerCase())
         .filter(Boolean) ?? []
@@ -107,7 +119,7 @@ export default class VideoUploadModal extends Component {
    */
   get maxFileSizeBytes() {
     return (
-      Number(this.siteSettings.video_stream_max_file_size || 0) *
+      Number(this.getSetting("max_file_size") || 0) *
       BYTES_IN_MEGABYTE
     );
   }
@@ -217,7 +229,7 @@ export default class VideoUploadModal extends Component {
     }
 
     this.showToast("video_stream.file_too_large", {
-      max_size_mb: this.siteSettings.video_stream_max_file_size,
+      max_size_mb: this.getSetting("max_file_size"),
     });
     return false;
   }
@@ -246,7 +258,7 @@ export default class VideoUploadModal extends Component {
     this.uploadProgress = 0;
 
     try {
-      const prepareData = await ajax("/video-stream/prepare-upload.json", {
+      const prepareData = await ajax("/multiple-video-stream/prepare-upload.json", {
         type: "POST",
         data: {
           file_name: file.name,
@@ -277,7 +289,7 @@ export default class VideoUploadModal extends Component {
         throw putErr;
       }
 
-      await ajax("/video-stream/complete-upload.json", {
+      await ajax("/multiple-video-stream/complete-upload.json", {
         type: "POST",
         data: {
           video_id: videoId,
@@ -326,7 +338,7 @@ export default class VideoUploadModal extends Component {
       const xhr = new XMLHttpRequest();
       this.activeXhr = xhr;
 
-      xhr.open("POST", "/video-stream/direct-upload.json", true);
+      xhr.open("POST", "/multiple-video-stream/direct-upload.json", true);
       const token = this._csrfToken();
       if (token) {
         xhr.setRequestHeader("X-CSRF-Token", token);
@@ -368,14 +380,13 @@ export default class VideoUploadModal extends Component {
       throw new Error("tus-js-client global is unavailable");
     }
 
-    const provider = this.siteSettings.video_stream_provider || "cloudflare";
     let endpoint = TUS_ENDPOINT;
     let headers = {};
     let videoId = null;
 
-    if (provider === "bunny") {
+    if (this.provider === "bunny") {
       try {
-        const prepareData = await ajax("/video-stream/prepare-upload.json", {
+        const prepareData = await ajax("/multiple-video-stream/prepare-upload.json", {
           type: "POST",
           data: {
             file_name: file.name,
@@ -415,7 +426,7 @@ export default class VideoUploadModal extends Component {
       },
     };
 
-    if (provider === "bunny") {
+    if (this.provider === "bunny") {
       uploadOptions.fingerprint = () => {
         return Promise.resolve(
           `bunny-${videoId}-${file.name}-${file.size}-${file.lastModified}`
@@ -563,9 +574,8 @@ export default class VideoUploadModal extends Component {
       return;
     }
 
-    const provider = this.siteSettings.video_stream_provider || "cloudflare";
     try {
-      if (provider === "hovod") {
+      if (this.provider === "hovod") {
         this._startHovodUpload(file);
       } else {
         this._startTusUpload(file);

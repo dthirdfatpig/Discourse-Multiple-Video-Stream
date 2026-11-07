@@ -73,7 +73,11 @@ export default class LiveStreamModal extends Component {
     this.isCreating = true;
 
     try {
-      const response = await ajax("/video-stream/create-live-stream.json", {
+      const endpoint =
+        this.siteSettings.multiple_video_stream_enabled !== undefined
+          ? "/multiple-video-stream/create-live-stream.json"
+          : "/video-stream/create-live-stream.json";
+      const response = await ajax(endpoint, {
         type: "POST",
         data: {
           name: `Discourse Live Stream - ${new Date().toISOString()}`,

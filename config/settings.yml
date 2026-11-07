@@ -1,132 +1,80 @@
 plugins:
-  video_stream_enabled:
+  multiple_video_stream_enabled:
     default: false
     client: true
-  video_stream_provider:
-    default: "cloudflare"
+  multiple_video_stream_provider:
+    default: "Cloudflare"
     type: enum
     choices:
-      - "cloudflare"
-      - "bunny"
-      - "hovod"
+      - "Cloudflare"
+      - "Bunny"
+      - "Hovod"
     client: true
-  video_stream_account_id:
+
+  # Hovod Connection Settings
+  multiple_video_stream_hovod_api_url:
     default: ""
-    client: false
-    depends_on:
-      - video_stream_provider
-    depends_on_values:
-      video_stream_provider:
-        - "cloudflare"
-    depends_behavior: "hidden"
-  video_stream_api_token:
+    client: true
+  multiple_video_stream_hovod_api_key:
     default: ""
     client: false
     secret: true
-    depends_on:
-      - video_stream_provider
-    depends_on_values:
-      video_stream_provider:
-        - "cloudflare"
-    depends_behavior: "hidden"
-  video_stream_customer_subdomain:
+  multiple_video_stream_hovod_hostname:
     default: ""
     client: true
-    depends_on:
-      - video_stream_provider
-    depends_on_values:
-      video_stream_provider:
-        - "cloudflare"
-    depends_behavior: "hidden"
-  video_stream_bunny_library_id:
+  multiple_video_stream_hovod_organization_id:
     default: ""
-    client: true
-    depends_on:
-      - video_stream_provider
-    depends_on_values:
-      video_stream_provider:
-        - "bunny"
-    depends_behavior: "hidden"
-  video_stream_bunny_api_key:
+    client: false
+
+  # Cloudflare Connection Settings
+  multiple_video_stream_account_id:
+    default: ""
+    client: false
+  multiple_video_stream_api_token:
     default: ""
     client: false
     secret: true
-    depends_on:
-      - video_stream_provider
-    depends_on_values:
-      video_stream_provider:
-        - "bunny"
-    depends_behavior: "hidden"
-  video_stream_bunny_hostname:
+  multiple_video_stream_customer_subdomain:
     default: ""
     client: true
-    depends_on:
-      - video_stream_provider
-    depends_on_values:
-      video_stream_provider:
-        - "bunny"
-    depends_behavior: "hidden"
-  video_stream_hovod_api_url:
+
+  # Bunny Connection Settings
+  multiple_video_stream_bunny_library_id:
     default: ""
     client: true
-    depends_on:
-      - video_stream_provider
-    depends_on_values:
-      video_stream_provider:
-        - "hovod"
-    depends_behavior: "hidden"
-  video_stream_hovod_api_key:
+  multiple_video_stream_bunny_api_key:
     default: ""
     client: false
     secret: true
-    depends_on:
-      - video_stream_provider
-    depends_on_values:
-      video_stream_provider:
-        - "hovod"
-    depends_behavior: "hidden"
-  video_stream_hovod_hostname:
+  multiple_video_stream_bunny_hostname:
     default: ""
     client: true
-    depends_on:
-      - video_stream_provider
-    depends_on_values:
-      video_stream_provider:
-        - "hovod"
-    depends_behavior: "hidden"
-  video_stream_hovod_organization_id:
-    default: ""
-    client: false
-    depends_on:
-      - video_stream_provider
-    depends_on_values:
-      video_stream_provider:
-        - "hovod"
-    depends_behavior: "hidden"
-  video_stream_allowed_extensions:
+
+  # General Settings
+  multiple_video_stream_allowed_extensions:
     default: "mp4,webm,mov"
     client: true
-  video_stream_max_file_size:
+  multiple_video_stream_max_file_size:
     default: 500
     client: true
     min: 1
     max: 2000
-  video_stream_max_duration:
+  multiple_video_stream_max_duration:
     default: 300
     client: false
     min: 1
     max: 21600
-  video_stream_keep_original_name:
+  multiple_video_stream_keep_original_name:
     default: false
     client: true
-  video_stream_intercept_native_uploads:
+  multiple_video_stream_intercept_native_uploads:
     default: true
     client: true
-  video_stream_intercept_threshold_mb:
+  multiple_video_stream_intercept_threshold_mb:
     default: 10
     client: true
     min: 1
     max: 2000
-  video_stream_enable_live_streams:
+  multiple_video_stream_enable_live_streams:
     default: false
     client: true

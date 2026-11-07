@@ -2,27 +2,27 @@
 
 require "rails_helper"
 
-RSpec.describe DiscourseVideoStream::VideoStreamController do
+RSpec.describe DiscourseMultipleVideoStream::VideoStreamController do
   fab!(:user)
 
   before do
-    SiteSetting.video_stream_enabled = true
-    SiteSetting.video_stream_account_id = "abc123"
-    SiteSetting.video_stream_api_token = "token"
+    SiteSetting.multiple_video_stream_enabled = true
+    SiteSetting.multiple_video_stream_account_id = "abc123"
+    SiteSetting.multiple_video_stream_api_token = "token"
   end
 
-  describe "POST /video-stream/upload-url" do
+  describe "POST /multiple-video-stream/upload-url" do
     it "requires login" do
-      post "/video-stream/upload-url.json"
+      post "/multiple-video-stream/upload-url.json"
 
       expect(response.status).to eq(403)
     end
 
     it "returns 404 when the feature is disabled" do
-      SiteSetting.video_stream_enabled = false
+      SiteSetting.multiple_video_stream_enabled = false
 
       sign_in(user)
-      post "/video-stream/upload-url.json"
+      post "/multiple-video-stream/upload-url.json"
 
       expect(response.status).to eq(404)
     end
@@ -36,10 +36,10 @@ RSpec.describe DiscourseVideoStream::VideoStreamController do
             tus_resumable: "1.0.0",
           },
         )
-      allow(DiscourseVideoStream::VideoUploadService).to receive(:call).and_return(context)
+      allow(DiscourseMultipleVideoStream::VideoUploadService).to receive(:call).and_return(context)
 
       sign_in(user)
-      post "/video-stream/upload-url.json",
+      post "/multiple-video-stream/upload-url.json",
            headers: {
              "Upload-Length" => "1024",
              "Upload-Metadata" => "name ZmlsZS5tcDQ=",
@@ -49,7 +49,7 @@ RSpec.describe DiscourseVideoStream::VideoStreamController do
       expect(response.status).to eq(201)
       expect(response.headers["Location"]).to eq("https://example.com")
       expect(response.headers["stream-media-id"]).to eq("123")
-      expect(DiscourseVideoStream::VideoUploadService).to have_received(:call).with(
+      expect(DiscourseMultipleVideoStream::VideoUploadService).to have_received(:call).with(
         satisfy do |args|
           expect(args[:params]).to include(
             upload_length: "1024",
@@ -57,7 +57,6 @@ RSpec.describe DiscourseVideoStream::VideoStreamController do
             tus_resumable: "1.0.0",
             creator_id: user.id,
           )
-
           true
         end,
       )
@@ -66,29 +65,29 @@ RSpec.describe DiscourseVideoStream::VideoStreamController do
     it "renders an error payload when the service fails" do
       failure_context = Service::Base::Context.new
       failure_context.fail(error: "nope", status: 422)
-      allow(DiscourseVideoStream::VideoUploadService).to receive(:call).and_return(failure_context)
+      allow(DiscourseMultipleVideoStream::VideoUploadService).to receive(:call).and_return(failure_context)
 
       sign_in(user)
-      post "/video-stream/upload-url.json"
+      post "/multiple-video-stream/upload-url.json"
 
       expect(response.status).to eq(422)
       expect(response.parsed_body["errors"].first).to eq("nope")
-      expect(DiscourseVideoStream::VideoUploadService).to have_received(:call)
+      expect(DiscourseMultipleVideoStream::VideoUploadService).to have_received(:call)
     end
   end
 
-  describe "POST /video-stream/prepare-upload" do
+  describe "POST /multiple-video-stream/prepare-upload" do
     it "requires login" do
-      post "/video-stream/prepare-upload.json"
+      post "/multiple-video-stream/prepare-upload.json"
 
       expect(response.status).to eq(403)
     end
 
     it "returns 404 when the feature is disabled" do
-      SiteSetting.video_stream_enabled = false
+      SiteSetting.multiple_video_stream_enabled = false
 
       sign_in(user)
-      post "/video-stream/prepare-upload.json"
+      post "/multiple-video-stream/prepare-upload.json"
 
       expect(response.status).to eq(404)
     end
@@ -103,10 +102,10 @@ RSpec.describe DiscourseVideoStream::VideoStreamController do
             upload_method: "PUT",
           },
         )
-      allow(DiscourseVideoStream::PrepareUploadService).to receive(:call).and_return(context)
+      allow(DiscourseMultipleVideoStream::PrepareUploadService).to receive(:call).and_return(context)
 
       sign_in(user)
-      post "/video-stream/prepare-upload.json",
+      post "/multiple-video-stream/prepare-upload.json",
            params: {
              file_name: "sample.mp4",
              file_size: 1024,
@@ -116,7 +115,7 @@ RSpec.describe DiscourseVideoStream::VideoStreamController do
       expect(response.status).to eq(200)
       expect(response.parsed_body["provider"]).to eq("hovod")
       expect(response.parsed_body["video_id"]).to eq("hovod123")
-      expect(DiscourseVideoStream::PrepareUploadService).to have_received(:call).with(
+      expect(DiscourseMultipleVideoStream::PrepareUploadService).to have_received(:call).with(
         satisfy do |args|
           expect(args[:params]).to include(
             file_name: "sample.mp4",
@@ -132,29 +131,29 @@ RSpec.describe DiscourseVideoStream::VideoStreamController do
     it "renders error payload when PrepareUploadService fails" do
       failure_context = Service::Base::Context.new
       failure_context.fail(error: "cannot prepare", status: 422)
-      allow(DiscourseVideoStream::PrepareUploadService).to receive(:call).and_return(failure_context)
+      allow(DiscourseMultipleVideoStream::PrepareUploadService).to receive(:call).and_return(failure_context)
 
       sign_in(user)
-      post "/video-stream/prepare-upload.json"
+      post "/multiple-video-stream/prepare-upload.json"
 
       expect(response.status).to eq(422)
       expect(response.parsed_body["errors"].first).to eq("cannot prepare")
     end
   end
 
-  describe "POST /video-stream/complete-upload" do
+  describe "POST /multiple-video-stream/complete-upload" do
     it "requires login" do
-      post "/video-stream/complete-upload.json", params: { video_id: "hovod123" }
+      post "/multiple-video-stream/complete-upload.json", params: { video_id: "hovod123" }
 
       expect(response.status).to eq(403)
     end
 
     it "calls CompleteUploadService and returns result" do
       context = Service::Base::Context.new(result: { success: true, video_id: "hovod123" })
-      allow(DiscourseVideoStream::CompleteUploadService).to receive(:call).and_return(context)
+      allow(DiscourseMultipleVideoStream::CompleteUploadService).to receive(:call).and_return(context)
 
       sign_in(user)
-      post "/video-stream/complete-upload.json", params: { video_id: "hovod123" }
+      post "/multiple-video-stream/complete-upload.json", params: { video_id: "hovod123" }
 
       expect(response.status).to eq(200)
       expect(response.parsed_body["success"]).to eq(true)

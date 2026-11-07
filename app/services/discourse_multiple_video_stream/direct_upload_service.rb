@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-module DiscourseVideoStream
+module DiscourseMultipleVideoStream
   class DirectUploadService
     include ::Service::Base
 
@@ -18,9 +18,7 @@ module DiscourseVideoStream
     private
 
     def fetch_upload_result(params:)
-      provider = SiteSetting.video_stream_provider.presence || "cloudflare"
-
-      if provider == "hovod"
+      if Config.provider == "hovod"
         upload_to_hovod(params)
       else
         context.fail!(error: "Direct upload proxy is only used for Hovod", status: 400)
@@ -57,16 +55,16 @@ module DiscourseVideoStream
       end
 
       if put_res.status >= 400
-        Rails.logger.error("[VideoStream] Failed to PUT direct upload to storage: status=#{put_res.status}")
-        context.fail!(error: I18n.t("video_stream.errors.upload_url"), status: 502)
+        Rails.logger.error("[MultipleVideoStream] Failed to PUT direct upload to storage: status=#{put_res.status}")
+        context.fail!(error: I18n.t("multiple_video_stream.errors.upload_url"), status: 502)
       end
 
       CompleteUploadService.call(params: { video_id: video_id })
 
       { video_id: video_id }
     rescue Faraday::Error => error
-      Rails.logger.error("[VideoStream] Direct upload exception: #{error.class}: #{error.message}")
-      context.fail!(error: I18n.t("video_stream.errors.upload_url"), status: 502)
+      Rails.logger.error("[MultipleVideoStream] Direct upload exception: #{error.class}: #{error.message}")
+      context.fail!(error: I18n.t("multiple_video_stream.errors.upload_url"), status: 502)
     end
   end
 end

@@ -11,6 +11,43 @@ function cleanDomain(domain) {
     .replace(/\/+$/, "");
 }
 
+function getSetting(siteSettings, name) {
+  const mVal = siteSettings[`multiple_video_stream_${name}`];
+  if (mVal !== undefined && mVal !== "") {
+    return mVal;
+  }
+  return siteSettings[`video_stream_${name}`];
+}
+
+function getHovodApiUrl(siteSettings) {
+  return getSetting(siteSettings, "hovod_api_url") || "";
+}
+
+function getHovodHostname(siteSettings) {
+  const host = getSetting(siteSettings, "hovod_hostname");
+  if (host) {
+    return host;
+  }
+  const api = getHovodApiUrl(siteSettings);
+  if (api) {
+    return api.replace(/^https?:\/\//i, "").replace(/\/+$/, "");
+  }
+  return "";
+}
+
+function getBunnyHostname(siteSettings) {
+  return getSetting(siteSettings, "bunny_hostname") || "";
+}
+
+function getCustomerSubdomain(siteSettings) {
+  return getSetting(siteSettings, "customer_subdomain") || "";
+}
+
+function getDefaultProvider(siteSettings) {
+  const p = getSetting(siteSettings, "provider") || "Cloudflare";
+  return String(p).trim().toLowerCase();
+}
+
 /**
  * Safely render an error message in a video container without raw innerHTML interpolation
  * @param {HTMLElement} container
@@ -48,12 +85,10 @@ function renderErrorMessage(container, message, videoId) {
  * @returns {Array<{ provider: string, manifestUri: string, poster: string }>}
  */
 function getPlaybackSources(videoId, explicitProvider, siteSettings) {
-  const cloudflareDomain = cleanDomain(
-    siteSettings.video_stream_customer_subdomain
-  );
-  const bunnyDomain = cleanDomain(siteSettings.video_stream_bunny_hostname);
-  const hovodDomain = cleanDomain(siteSettings.video_stream_hovod_hostname);
-  const defaultProvider = siteSettings.video_stream_provider || "cloudflare";
+  const cloudflareDomain = cleanDomain(getCustomerSubdomain(siteSettings));
+  const bunnyDomain = cleanDomain(getBunnyHostname(siteSettings));
+  const rawHovodDomain = cleanDomain(getHovodHostname(siteSettings));
+  const defaultProvider = getDefaultProvider(siteSettings);
 
   const bunnySources = bunnyDomain
     ? [
@@ -80,12 +115,26 @@ function getPlaybackSources(videoId, explicitProvider, siteSettings) {
       ]
     : [];
 
-  const hovodSources = hovodDomain
+  let hovodBase = rawHovodDomain;
+  if (hovodBase && !hovodBase.startsWith("http://") && !hovodBase.startsWith("https://")) {
+    if (/^(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}|localhost)(:\d+)?$/i.test(hovodBase)) {
+      hovodBase = `http://${hovodBase}`;
+    } else {
+      hovodBase = `https://${hovodBase}`;
+    }
+  }
+
+  const hovodSources = hovodBase
     ? [
         {
           provider: "hovod",
-          manifestUri: `https://${hovodDomain}/playback/${videoId}/master.m3u8`,
-          poster: `https://${hovodDomain}/playback/${videoId}/thumbnail.jpg`,
+          manifestUri: `${hovodBase}/playback/${videoId}/master.m3u8`,
+          poster: `${hovodBase}/playback/${videoId}/thumbnail.jpg`,
+        },
+        {
+          provider: "hovod",
+          manifestUri: `${hovodBase}/v1/playback/${videoId}/master.m3u8`,
+          poster: `${hovodBase}/playback/${videoId}/thumbnail.jpg`,
         },
       ]
     : [];
@@ -600,12 +649,17 @@ async function initializeShakaPlayer(
     }
 
     // Dynamic Hovod API lookup fallback if configured
-    if (!successfulSource && siteSettings.video_stream_hovod_api_url) {
+    const hovodApiUrl = getHovodApiUrl(siteSettings);
+    if (!successfulSource && hovodApiUrl) {
       try {
-        const cleanApi = siteSettings.video_stream_hovod_api_url.replace(
-          /\/+$/,
-          ""
-        );
+        let cleanApi = hovodApiUrl.replace(/\/+$/, "");
+        if (!cleanApi.startsWith("http://") && !cleanApi.startsWith("https://")) {
+          if (/^(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}|localhost)(:\d+)?$/i.test(cleanApi)) {
+            cleanApi = `http://${cleanApi}`;
+          } else {
+            cleanApi = `https://${cleanApi}`;
+          }
+        }
         const res = await fetch(`${cleanApi}/v1/playback/${videoId}`);
         if (res.ok) {
           const resJson = await res.json();
@@ -685,26 +739,29 @@ function initializeVideoStreamPlayer(api) {
         return;
       }
 
-      const cloudflareDomain = cleanDomain(
-        siteSettings.video_stream_customer_subdomain
-      );
-      const bunnyDomain = cleanDomain(siteSettings.video_stream_bunny_hostname);
-      const hovodDomain = cleanDomain(siteSettings.video_stream_hovod_hostname);
-      const hovodApi = cleanDomain(siteSettings.video_stream_hovod_api_url);
+      const cloudflareDomain = cleanDomain(getCustomerSubdomain(siteSettings));
+      const bunnyDomain = cleanDomain(getBunnyHostname(siteSettings));
+      const hovodDomain = cleanDomain(getHovodHostname(siteSettings));
+      const hovodApi = cleanDomain(getHovodApiUrl(siteSettings));
 
       if (!cloudflareDomain && !bunnyDomain && !hovodDomain && !hovodApi) {
         // eslint-disable-next-line no-console
         console.error(
-          "Video Stream: playback domain/hostname not configured in site settings"
+          "Multiple Video Stream: playback domain/hostname not configured in site settings"
         );
         return;
       }
 
       containers.forEach((container) => {
         // Skip if already initialized
-        if (container.querySelector("video")) {
+        if (
+          container.dataset.multipleVideoStreamInitialized ||
+          container.querySelector("video")
+        ) {
           return;
         }
+
+        container.dataset.multipleVideoStreamInitialized = "true";
 
         const videoId = container.dataset.videoId;
 
@@ -719,7 +776,7 @@ function initializeVideoStreamPlayer(api) {
           siteSettings
         );
 
-        if (!sources.length && !siteSettings.video_stream_hovod_api_url) {
+        if (!sources.length && !getHovodApiUrl(siteSettings)) {
           renderErrorMessage(container, "Playback not configured", videoId);
           return;
         }
@@ -739,7 +796,7 @@ function initializeVideoStreamPlayer(api) {
       });
     },
     {
-      id: "video-stream-player",
+      id: "multiple-video-stream-player",
       onlyStream: true,
     }
   );
@@ -761,14 +818,14 @@ function initializeVideoStreamPlayer(api) {
       };
     },
     {
-      id: "video-stream-player-cleanup",
+      id: "multiple-video-stream-player-cleanup",
       onlyStream: true,
     }
   );
 }
 
 export default {
-  name: "video-stream-player",
+  name: "multiple-video-stream-player",
   initialize() {
     withPluginApi(initializeVideoStreamPlayer);
   },

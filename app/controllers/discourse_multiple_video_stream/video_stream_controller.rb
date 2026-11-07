@@ -2,9 +2,9 @@
 
 require_dependency "application_controller"
 
-module DiscourseVideoStream
+module DiscourseMultipleVideoStream
   class VideoStreamController < ::ApplicationController
-    requires_plugin DiscourseVideoStream::PLUGIN_NAME
+    requires_plugin DiscourseMultipleVideoStream::PLUGIN_NAME
 
     before_action :ensure_logged_in
     before_action :ensure_feature_enabled
@@ -15,7 +15,7 @@ module DiscourseVideoStream
 
       if context.failure?
         render_json_error(
-          context[:error] || I18n.t("video_stream.errors.create_live_input"),
+          context[:error] || I18n.t("multiple_video_stream.errors.create_live_input"),
           status: context[:status] || 422,
         )
         return
@@ -29,7 +29,7 @@ module DiscourseVideoStream
 
       if context.failure?
         render_json_error(
-          context[:error] || I18n.t("video_stream.errors.upload_url"),
+          context[:error] || I18n.t("multiple_video_stream.errors.upload_url"),
           status: context[:status] || 422,
         )
         return
@@ -41,7 +41,7 @@ module DiscourseVideoStream
     def complete_upload
       video_id = params[:video_id].presence || params[:id].presence
       if video_id.blank?
-        render_json_error(I18n.t("video_stream.errors.upload_url"), status: 422)
+        render_json_error(I18n.t("multiple_video_stream.errors.upload_url"), status: 422)
         return
       end
 
@@ -49,7 +49,7 @@ module DiscourseVideoStream
 
       if context.failure?
         render_json_error(
-          context[:error] || I18n.t("video_stream.errors.upload_url"),
+          context[:error] || I18n.t("multiple_video_stream.errors.upload_url"),
           status: context[:status] || 422,
         )
         return
@@ -61,7 +61,7 @@ module DiscourseVideoStream
     def direct_upload
       file = params[:file]
       if file.blank?
-        render_json_error(I18n.t("video_stream.upload_failed"), status: 422)
+        render_json_error(I18n.t("multiple_video_stream.upload_failed"), status: 422)
         return
       end
 
@@ -75,7 +75,7 @@ module DiscourseVideoStream
 
       if context.failure?
         render_json_error(
-          context[:error] || I18n.t("video_stream.errors.upload_url"),
+          context[:error] || I18n.t("multiple_video_stream.errors.upload_url"),
           status: context[:status] || 422,
         )
         return
@@ -89,7 +89,7 @@ module DiscourseVideoStream
 
       if context.failure?
         render_json_error(
-          context[:error] || I18n.t("video_stream.errors.upload_url"),
+          context[:error] || I18n.t("multiple_video_stream.errors.upload_url"),
           status: context[:status] || 422,
         )
         return
@@ -121,7 +121,7 @@ module DiscourseVideoStream
     end
 
     def ensure_feature_enabled
-      raise Discourse::NotFound unless SiteSetting.video_stream_enabled
+      raise Discourse::NotFound unless Config.enabled?
     end
 
     def ensure_can_upload_to_stream

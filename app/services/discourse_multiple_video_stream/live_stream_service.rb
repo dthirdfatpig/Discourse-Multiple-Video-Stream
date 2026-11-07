@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-module DiscourseVideoStream
+module DiscourseMultipleVideoStream
   class LiveStreamService
     include ::Service::Base
 
@@ -8,9 +8,6 @@ module DiscourseVideoStream
       "https://api.cloudflare.com/client/v4/accounts/%{account_id}/stream/live_inputs"
     BUNNY_LIVE_PATH =
       "https://video.bunnycdn.com/library/%{library_id}/live"
-
-    # @!method self.call(name:)
-    #   @return [Service::Base::Context]
 
     params { attribute :name, :string, default: "Discourse Live Stream" }
 
@@ -22,24 +19,22 @@ module DiscourseVideoStream
     private
 
     def fetch_live_input(params:)
-      provider = SiteSetting.video_stream_provider.presence || "cloudflare"
-
-      case provider
+      case Config.provider
       when "bunny"
         fetch_bunny_live_input(params)
       when "hovod"
-        context.fail!(error: I18n.t("video_stream.errors.hovod_no_live_stream"), status: 422)
+        context.fail!(error: I18n.t("multiple_video_stream.errors.hovod_no_live_stream"), status: 422)
       else
         fetch_cloudflare_live_input(params)
       end
     end
 
     def fetch_cloudflare_live_input(params)
-      account_id = SiteSetting.video_stream_account_id.presence
-      api_token = SiteSetting.video_stream_api_token.presence
+      account_id = Config.cloudflare_account_id
+      api_token = Config.cloudflare_api_token
 
       if account_id.blank? || api_token.blank?
-        context.fail!(error: I18n.t("video_stream.errors.misconfigured"), status: 422)
+        context.fail!(error: I18n.t("multiple_video_stream.errors.misconfigured"), status: 422)
       end
 
       url = CF_LIVE_INPUT_PATH % { account_id: account_id }
@@ -58,14 +53,14 @@ module DiscourseVideoStream
 
       if response.status >= 400
         log_failure(response.status, parse_body(response.body))
-        context.fail!(error: I18n.t("video_stream.errors.create_live_input"), status: 422)
+        context.fail!(error: I18n.t("multiple_video_stream.errors.create_live_input"), status: 422)
       end
 
       body = parse_body(response.body)
 
       unless body.dig("result", "uid")
         log_failure(response.status, body)
-        context.fail!(error: I18n.t("video_stream.errors.create_live_input"), status: 422)
+        context.fail!(error: I18n.t("multiple_video_stream.errors.create_live_input"), status: 422)
       end
 
       result = body["result"]
@@ -78,15 +73,15 @@ module DiscourseVideoStream
       }
     rescue JSON::ParserError, Faraday::Error => error
       log_exception(error)
-      context.fail!(error: I18n.t("video_stream.errors.create_live_input"), status: 422)
+      context.fail!(error: I18n.t("multiple_video_stream.errors.create_live_input"), status: 422)
     end
 
     def fetch_bunny_live_input(params)
-      library_id = SiteSetting.video_stream_bunny_library_id.presence
-      api_key = SiteSetting.video_stream_bunny_api_key.presence
+      library_id = Config.bunny_library_id
+      api_key = Config.bunny_api_key
 
       if library_id.blank? || api_key.blank?
-        context.fail!(error: I18n.t("video_stream.errors.misconfigured"), status: 422)
+        context.fail!(error: I18n.t("multiple_video_stream.errors.misconfigured"), status: 422)
       end
 
       url = BUNNY_LIVE_PATH % { library_id: library_id }
@@ -109,34 +104,36 @@ module DiscourseVideoStream
 
       if response.status >= 400
         log_failure(response.status, parse_body(response.body))
-        context.fail!(error: I18n.t("video_stream.errors.create_live_input"), status: 422)
+        context.fail!(error: I18n.t("multiple_video_stream.errors.create_live_input"), status: 422)
       end
 
       body = parse_body(response.body)
-      uid = body["id"] || body["guid"]
+      video_id = body["guid"].presence
 
-      if uid.blank?
+      if video_id.blank?
         log_failure(response.status, body)
-        context.fail!(error: I18n.t("video_stream.errors.create_live_input"), status: 422)
+        context.fail!(error: I18n.t("multiple_video_stream.errors.create_live_input"), status: 422)
       end
 
-      rtmp_url = body["rtmpServer"] || body["rtmpUrl"] || "rtmp://live.bunnycdn.com/live"
-      stream_key = body["streamKey"] || uid
+      rtmp_key = body["streamKey"].presence || api_key
+      rtmp_url = body["rtmpServerUri"].presence || "rtmp://live.bunnycdn.com/live"
 
       {
-        uid: uid,
+        uid: video_id,
         rtmps_url: rtmp_url,
-        rtmps_stream_key: stream_key,
-        created: body["created"] || Time.now.iso8601,
+        rtmps_stream_key: rtmp_key,
+        created: body["createdAt"],
       }
     rescue JSON::ParserError, Faraday::Error => error
       log_exception(error)
-      context.fail!(error: I18n.t("video_stream.errors.create_live_input"), status: 422)
+      context.fail!(error: I18n.t("multiple_video_stream.errors.create_live_input"), status: 422)
     end
 
     def sanitize_name(name)
-      clean = name.to_s.gsub(/[\x00-\x1f]/, "").strip
-      clean.present? ? clean.truncate(255) : "Discourse Live Stream"
+      return "Discourse Live Stream" if name.blank?
+
+      sanitized = name.gsub(/[\x00-\x1f]/, "").strip
+      sanitized.truncate(255).presence || "Discourse Live Stream"
     end
 
     def parse_body(raw_body)
@@ -149,11 +146,11 @@ module DiscourseVideoStream
     end
 
     def log_failure(status, body)
-      Rails.logger.error("[VideoStream] Failed to create live input (status=#{status}): #{body}")
+      Rails.logger.error("[MultipleVideoStream] Failed to create live input (status=#{status}): #{body}")
     end
 
     def log_exception(error)
-      Rails.logger.error("[VideoStream] Live input request raised #{error.class}: #{error.message}")
+      Rails.logger.error("[MultipleVideoStream] Live input request raised #{error.class}: #{error.message}")
     end
   end
 end

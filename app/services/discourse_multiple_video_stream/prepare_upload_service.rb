@@ -2,7 +2,7 @@
 
 require "openssl"
 
-module DiscourseVideoStream
+module DiscourseMultipleVideoStream
   class PrepareUploadService
     include ::Service::Base
 
@@ -24,9 +24,7 @@ module DiscourseVideoStream
     private
 
     def fetch_upload_details(params:)
-      provider = SiteSetting.video_stream_provider.presence || "cloudflare"
-
-      case provider
+      case Config.provider
       when "bunny"
         fetch_bunny_upload_details(params)
       when "hovod"
@@ -37,25 +35,25 @@ module DiscourseVideoStream
     end
 
     def fetch_cloudflare_upload_details(params)
-      account_id = SiteSetting.video_stream_account_id.presence
-      api_token = SiteSetting.video_stream_api_token.presence
+      account_id = Config.cloudflare_account_id
+      api_token = Config.cloudflare_api_token
 
       if account_id.blank? || api_token.blank?
-        context.fail!(error: I18n.t("video_stream.errors.misconfigured"), status: 422)
+        context.fail!(error: I18n.t("multiple_video_stream.errors.misconfigured"), status: 422)
       end
 
       {
         provider: "cloudflare",
-        endpoint: "/video-stream/upload-url.json",
+        endpoint: "/multiple-video-stream/upload-url.json",
       }
     end
 
     def fetch_bunny_upload_details(params)
-      library_id = SiteSetting.video_stream_bunny_library_id.presence
-      api_key = SiteSetting.video_stream_bunny_api_key.presence
+      library_id = Config.bunny_library_id
+      api_key = Config.bunny_api_key
 
       if library_id.blank? || api_key.blank?
-        context.fail!(error: I18n.t("video_stream.errors.misconfigured"), status: 422)
+        context.fail!(error: I18n.t("multiple_video_stream.errors.misconfigured"), status: 422)
       end
 
       title = extract_video_title(params.file_name)
@@ -76,7 +74,7 @@ module DiscourseVideoStream
 
       if create_response.status >= 400
         log_failure(create_response.status, parse_body(create_response.body))
-        context.fail!(error: I18n.t("video_stream.errors.upload_url"), status: 422)
+        context.fail!(error: I18n.t("multiple_video_stream.errors.upload_url"), status: 422)
       end
 
       body = parse_body(create_response.body)
@@ -84,7 +82,7 @@ module DiscourseVideoStream
 
       if video_id.blank?
         log_failure(create_response.status, body)
-        context.fail!(error: I18n.t("video_stream.errors.upload_url"), status: 422)
+        context.fail!(error: I18n.t("multiple_video_stream.errors.upload_url"), status: 422)
       end
 
       expires = (Time.now + 24.hours).to_i
@@ -104,18 +102,17 @@ module DiscourseVideoStream
       }
     rescue JSON::ParserError, Faraday::Error => error
       log_exception(error)
-      context.fail!(error: I18n.t("video_stream.errors.upload_url"), status: 422)
+      context.fail!(error: I18n.t("multiple_video_stream.errors.upload_url"), status: 422)
     end
 
     def fetch_hovod_upload_details(params)
-      api_url = SiteSetting.video_stream_hovod_api_url.presence
-      api_key = SiteSetting.video_stream_hovod_api_key.presence
+      api_url = Config.hovod_api_url
+      api_key = Config.hovod_api_key
 
       if api_url.blank? || api_key.blank?
-        context.fail!(error: I18n.t("video_stream.errors.misconfigured"), status: 422)
+        context.fail!(error: I18n.t("multiple_video_stream.errors.misconfigured"), status: 422)
       end
 
-      clean_api_url = api_url.to_s.strip.chomp("/")
       title = extract_video_title(params.file_name)
 
       headers = {
@@ -123,8 +120,8 @@ module DiscourseVideoStream
         "Content-Type" => "application/json",
         "Accept" => "application/json",
       }
-      if SiteSetting.video_stream_hovod_organization_id.present?
-        headers["x-organization-id"] = SiteSetting.video_stream_hovod_organization_id.strip
+      if Config.hovod_organization_id.present?
+        headers["x-organization-id"] = Config.hovod_organization_id
       end
 
       metadata = {
@@ -132,12 +129,12 @@ module DiscourseVideoStream
       }
       metadata[:creatorId] = params.creator_id.to_s if params.creator_id.present?
 
-      max_duration = SiteSetting.video_stream_max_duration.presence || DEFAULT_MAX_DURATION_SECONDS
+      max_duration = Config.max_duration
       metadata[:maxDurationSeconds] = max_duration.to_s if max_duration.present?
 
       create_response =
         Faraday.post(
-          "#{clean_api_url}/v1/assets",
+          "#{api_url}/v1/assets",
           { title: title, metadata: metadata }.to_json,
           headers,
         ) do |req|
@@ -147,7 +144,7 @@ module DiscourseVideoStream
 
       if create_response.status >= 400
         log_failure(create_response.status, parse_body(create_response.body))
-        context.fail!(error: I18n.t("video_stream.errors.upload_url"), status: 422)
+        context.fail!(error: I18n.t("multiple_video_stream.errors.upload_url"), status: 422)
       end
 
       body = parse_body(create_response.body)
@@ -157,12 +154,12 @@ module DiscourseVideoStream
 
       if asset_id.blank?
         log_failure(create_response.status, body)
-        context.fail!(error: I18n.t("video_stream.errors.upload_url"), status: 422)
+        context.fail!(error: I18n.t("multiple_video_stream.errors.upload_url"), status: 422)
       end
 
       upload_url_response =
         Faraday.post(
-          "#{clean_api_url}/v1/assets/#{asset_id}/upload-url",
+          "#{api_url}/v1/assets/#{asset_id}/upload-url",
           nil,
           headers,
         ) do |req|
@@ -172,7 +169,7 @@ module DiscourseVideoStream
 
       if upload_url_response.status >= 400
         log_failure(upload_url_response.status, parse_body(upload_url_response.body))
-        context.fail!(error: I18n.t("video_stream.errors.upload_url"), status: 422)
+        context.fail!(error: I18n.t("multiple_video_stream.errors.upload_url"), status: 422)
       end
 
       upload_body = parse_body(upload_url_response.body)
@@ -181,7 +178,7 @@ module DiscourseVideoStream
 
       if upload_url.blank?
         log_failure(upload_url_response.status, upload_body)
-        context.fail!(error: I18n.t("video_stream.errors.upload_url"), status: 422)
+        context.fail!(error: I18n.t("multiple_video_stream.errors.upload_url"), status: 422)
       end
 
       {
@@ -193,11 +190,11 @@ module DiscourseVideoStream
       }
     rescue JSON::ParserError, Faraday::Error => error
       log_exception(error)
-      context.fail!(error: I18n.t("video_stream.errors.upload_url"), status: 422)
+      context.fail!(error: I18n.t("multiple_video_stream.errors.upload_url"), status: 422)
     end
 
     def extract_video_title(file_name)
-      if SiteSetting.video_stream_keep_original_name && file_name.present?
+      if Config.keep_original_name && file_name.present?
         sanitized = file_name.to_s.gsub(/[\x00-\x1f]/, "").strip
         return sanitized.truncate(255) if sanitized.present?
       end
@@ -215,11 +212,11 @@ module DiscourseVideoStream
     end
 
     def log_failure(status, body)
-      Rails.logger.error("[VideoStream] Failed to prepare upload (status=#{status}): #{body}")
+      Rails.logger.error("[MultipleVideoStream] Failed to prepare upload (status=#{status}): #{body}")
     end
 
     def log_exception(error)
-      Rails.logger.error("[VideoStream] Prepare upload request raised #{error.class}: #{error.message}")
+      Rails.logger.error("[MultipleVideoStream] Prepare upload request raised #{error.class}: #{error.message}")
     end
   end
 end

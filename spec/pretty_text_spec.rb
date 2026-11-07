@@ -4,7 +4,7 @@ describe PrettyText do
   before { Jobs.run_immediately! }
 
   context "with video-stream BBCode" do
-    before { SiteSetting.video_stream_enabled = true }
+    before { SiteSetting.multiple_video_stream_enabled = true }
 
     it "converts video-stream BBCode to video container div" do
       markdown = <<~MD
