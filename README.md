@@ -1,5 +1,10 @@
 # Discourse Video Stream
 
+> [!NOTE]
+> Created with AI.
+>
+> **Note from the creator:** Working fine up to 11-07-26, use in production at your own risk.
+
 Discourse Video Stream adds a Cloudflare Stream and Bunny.net Stream-powered workflow for uploading and embedding long‑form video in the composer. Editors can upload large files directly from the composer toolbar and the plugin uses a custom BBCode syntax with Shaka Player for adaptive streaming playback.
 
 ## Features
