@@ -1,4 +1,4 @@
-plugins:
+discourse_multiple_video_stream:
   multiple_video_stream_enabled:
     default: false
     client: true

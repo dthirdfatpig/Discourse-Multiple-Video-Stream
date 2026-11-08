@@ -3,7 +3,7 @@
 # name: discourse-multiple-video-stream
 # about: Multi-provider video streaming plugin for Discourse integrating Cloudflare Stream, Bunny.net, and Hovod.
 # meta_topic_id: TODO
-# version: 0.0.2.beta
+# version: 0.0.3.beta
 # authors: dthirdfatpig
 # url: https://github.com/dthirdfatpig/Discourse-Multiple-Video-Stream
 # required_version: 2.7.0
@@ -50,12 +50,86 @@ PLUGIN_SETTING_NAMES = %i[
   multiple_video_stream_enable_live_streams
 ].freeze
 
-# Ensure settings are mapped in SiteSetting.plugins for discourse admin filtering
-if defined?(SiteSetting) && SiteSetting.respond_to?(:plugins)
-  PLUGIN_SETTING_NAMES.each do |s|
-    SiteSetting.plugins[s] = "discourse-multiple-video-stream"
+class MultipleVideoPluginMatcher
+  def to_s
+    "discourse-multiple-video-stream"
+  end
+
+  def to_str
+    "discourse-multiple-video-stream"
+  end
+
+  def to_sym
+    :"discourse-multiple-video-stream"
+  end
+
+  def ==(other)
+    str = other.to_s.downcase.tr("-_", "")
+    str == "discoursemultiplevideostream" ||
+      str == "multiplevideostream" ||
+      str == to_s.tr("-_", "")
+  end
+
+  def eql?(other)
+    self == other
+  end
+
+  def hash
+    to_s.hash
   end
 end
+
+class MultipleVideoCategoryMatcher
+  def to_s
+    "discourse_multiple_video_stream"
+  end
+
+  def to_str
+    "discourse_multiple_video_stream"
+  end
+
+  def to_sym
+    :discourse_multiple_video_stream
+  end
+
+  def ==(other)
+    str = other.to_s.downcase.tr("-_", "")
+    str == "discoursemultiplevideostream" ||
+      str == "multiplevideostream" ||
+      str == "plugins" ||
+      str == to_s.tr("-_", "")
+  end
+
+  def eql?(other)
+    self == other
+  end
+
+  def hash
+    to_s.hash
+  end
+end
+
+# Bind settings and categories so Discourse Admin shows options under both category & plugin filters
+def self.sync_settings_metadata!
+  return unless defined?(SiteSetting)
+
+  plugin_matcher = MultipleVideoPluginMatcher.new
+  category_matcher = MultipleVideoCategoryMatcher.new
+
+  if SiteSetting.respond_to?(:plugins)
+    PLUGIN_SETTING_NAMES.each do |s|
+      SiteSetting.plugins[s] = plugin_matcher
+    end
+  end
+
+  if SiteSetting.respond_to?(:categories)
+    PLUGIN_SETTING_NAMES.each do |s|
+      SiteSetting.categories[s] = category_matcher
+    end
+  end
+end
+
+sync_settings_metadata!
 
 # Provide settings to Discourse AdminPluginSerializer
 def plugin_settings
@@ -73,10 +147,6 @@ after_initialize do
   register_svg_icon("video")
   register_svg_icon("tower-broadcast")
 
-  # Keep plugin settings mapped across directory and metadata name variations
-  if defined?(SiteSetting) && SiteSetting.respond_to?(:plugins)
-    PLUGIN_SETTING_NAMES.each do |s|
-      SiteSetting.plugins[s] = "discourse-multiple-video-stream"
-    end
-  end
+  ::DiscourseMultipleVideoStream.sync_settings_metadata! if defined?(::DiscourseMultipleVideoStream.sync_settings_metadata!)
+  sync_settings_metadata! if respond_to?(:sync_settings_metadata!)
 end

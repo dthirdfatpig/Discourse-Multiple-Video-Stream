@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.0.3.beta] - 2026-11-07
+
+### Fixed
+- **Plugin Settings Category Alignment**: Fixed empty settings page by redefining the root configuration key in `config/settings.yml` as `discourse_multiple_video_stream:` to match Discourse's category routing architecture.
+- **Dynamic Category & Plugin Filter Matchers**: Added dynamic matching wrappers for `SiteSetting.categories` and `SiteSetting.plugins` so that site settings options render correctly whether accessed via `/admin/site_settings/category/discourse_multiple_video_stream`, the general `plugins` category, or direct plugin query filters (`plugin:discourse-multiple-video-stream`).
+
+---
+
 ## [0.0.2.beta] - 2026-11-07
 
 ### Fixed
