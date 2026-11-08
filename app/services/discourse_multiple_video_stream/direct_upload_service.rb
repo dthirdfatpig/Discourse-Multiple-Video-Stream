@@ -49,13 +49,25 @@ module DiscourseMultipleVideoStream
       file_payload = file.respond_to?(:read) ? file.read : file
       content_type = file.respond_to?(:content_type) && file.content_type.present? ? file.content_type : "video/mp4"
 
-      put_res = Faraday.put(upload_url, file_payload, { "Content-Type" => content_type }) do |req|
-        req.options.timeout = FARADAY_TIMEOUT
-        req.options.open_timeout = FARADAY_OPEN_TIMEOUT
+      headers = { "Content-Type" => content_type }
+      if Config.hovod_api_url.present? && upload_url.start_with?(Config.hovod_api_url)
+        headers["X-Api-Key"] = Config.hovod_api_key
+        headers["Authorization"] = "Bearer #{Config.hovod_api_key}"
       end
 
+      conn = Faraday.new do |f|
+        f.options.timeout = FARADAY_TIMEOUT
+        f.options.open_timeout = FARADAY_OPEN_TIMEOUT
+        if upload_url.match?(%r{^https://(?:\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}|localhost|127\.)})
+          f.ssl.verify = false
+        end
+        f.adapter Faraday.default_adapter
+      end
+
+      put_res = conn.put(upload_url, file_payload, headers)
+
       if put_res.status >= 400
-        Rails.logger.error("[MultipleVideoStream] Failed to PUT direct upload to storage: status=#{put_res.status}")
+        Rails.logger.error("[MultipleVideoStream] Failed to PUT direct upload to storage: status=#{put_res.status} body=#{put_res.body}")
         context.fail!(error: I18n.t("multiple_video_stream.errors.upload_url"), status: 502)
       end
 

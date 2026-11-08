@@ -23,6 +23,30 @@ module DiscourseMultipleVideoStream
       end
     end
 
+    def build_hovod_connection(api_url)
+      Faraday.new(url: api_url) do |conn|
+        conn.options.timeout = FARADAY_TIMEOUT
+        conn.options.open_timeout = FARADAY_OPEN_TIMEOUT
+        if api_url.match?(%r{^https://(?:\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}|localhost|127\.)})
+          conn.ssl.verify = false
+        end
+        conn.adapter Faraday.default_adapter
+      end
+    end
+
+    def hovod_headers(api_key)
+      h = {
+        "Content-Type" => "application/json",
+        "Accept" => "application/json",
+      }
+      h["X-Api-Key"] = api_key
+      h["Authorization"] = "Bearer #{api_key}"
+      if Config.hovod_organization_id.present?
+        h["x-organization-id"] = Config.hovod_organization_id
+      end
+      h
+    end
+
     def finalize_hovod_upload(video_id)
       api_url = Config.hovod_api_url
       api_key = Config.hovod_api_key
@@ -31,33 +55,27 @@ module DiscourseMultipleVideoStream
         context.fail!(error: I18n.t("multiple_video_stream.errors.misconfigured"), status: 422)
       end
 
-      headers = {
-        "Authorization" => "Bearer #{api_key}",
-        "Content-Type" => "application/json",
-        "Accept" => "application/json",
-      }
-      if Config.hovod_organization_id.present?
-        headers["x-organization-id"] = Config.hovod_organization_id
-      end
+      headers = hovod_headers(api_key)
+      client = build_hovod_connection(api_url)
 
       # 1. Mark upload complete on Hovod
-      complete_res = Faraday.post("#{api_url}/v1/assets/#{video_id}/upload-complete", nil, headers) do |req|
-        req.options.timeout = FARADAY_TIMEOUT
-        req.options.open_timeout = FARADAY_OPEN_TIMEOUT
-      end
-
-      if complete_res.status >= 400
-        Rails.logger.warn("[MultipleVideoStream] Hovod upload-complete returned #{complete_res.status}: #{complete_res.body}")
+      begin
+        complete_res = client.post("/v1/assets/#{video_id}/upload-complete", nil, headers)
+        if complete_res.status >= 400
+          Rails.logger.warn("[MultipleVideoStream] Hovod upload-complete returned #{complete_res.status}: #{complete_res.body}")
+        end
+      rescue => e
+        Rails.logger.warn("[MultipleVideoStream] Hovod upload-complete exception: #{e.message}")
       end
 
       # 2. Trigger processing / transcoding
-      process_res = Faraday.post("#{api_url}/v1/assets/#{video_id}/process", {}.to_json, headers) do |req|
-        req.options.timeout = FARADAY_TIMEOUT
-        req.options.open_timeout = FARADAY_OPEN_TIMEOUT
-      end
-
-      if process_res.status >= 400 && process_res.status != 409
-        Rails.logger.warn("[MultipleVideoStream] Hovod process returned #{process_res.status}: #{process_res.body}")
+      begin
+        process_res = client.post("/v1/assets/#{video_id}/process", {}.to_json, headers)
+        if process_res.status >= 400 && process_res.status != 409
+          Rails.logger.warn("[MultipleVideoStream] Hovod process returned #{process_res.status}: #{process_res.body}")
+        end
+      rescue => e
+        Rails.logger.warn("[MultipleVideoStream] Hovod process exception: #{e.message}")
       end
 
       { success: true, video_id: video_id }

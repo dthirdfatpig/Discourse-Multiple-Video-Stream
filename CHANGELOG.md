@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.0.4.beta] - 2026-11-07
+
+### Added
+- **Dynamic Provider Dependency Rules**: Configured `depends_on`, `depends_on_values`, and `depends_behavior: "hidden"` so Cloudflare-specific settings appear only when Cloudflare is selected, Bunny-specific settings appear only when Bunny is selected, and Hovod-specific settings appear only when Hovod is selected. Live streaming setting is also conditioned to Cloudflare and Bunny.
+- **Clean Admin Setting Labels**: Cleaned up repetitive "Multiple video stream" prefixes on all settings in Discourse Admin through `MultipleVideoLabelFormatter`, presenting concise labels such as "Hovod API key", "Hovod CDN or playback hostname", and "Bunny library ID".
+
+### Fixed
+- **Hovod API Key Authentication (`X-Api-Key`)**: Fixed Hovod authentication rejection by transmitting the `X-Api-Key` header (required for organization API keys starting with `mk_`) alongside `Authorization: Bearer` across `PrepareUploadService`, `CompleteUploadService`, and `DirectUploadService`.
+- **IP Address & Localhost SSL Handling**: Relaxed SSL verification in Faraday requests when connecting to IP addresses or localhost environments to prevent connection failures with self-hosted Hovod instances.
+- **Detailed Upload Error Surfacing**: Updated frontend upload modal to extract and display backend error messages directly in user toast notifications rather than a generic upload failure message.
+
+---
+
 ## [0.0.3.beta] - 2026-11-07
 
 ### Fixed

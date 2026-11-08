@@ -105,6 +105,31 @@ module DiscourseMultipleVideoStream
       context.fail!(error: I18n.t("multiple_video_stream.errors.upload_url"), status: 422)
     end
 
+    def build_hovod_connection(api_url)
+      Faraday.new(url: api_url) do |conn|
+        conn.options.timeout = FARADAY_TIMEOUT
+        conn.options.open_timeout = FARADAY_OPEN_TIMEOUT
+        if api_url.match?(%r{^https://(?:\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}|localhost|127\.)})
+          conn.ssl.verify = false
+        end
+        conn.adapter Faraday.default_adapter
+      end
+    end
+
+    def hovod_headers(api_key)
+      h = {
+        "Content-Type" => "application/json",
+        "Accept" => "application/json",
+      }
+      # Hovod API keys (mk_live_...) require X-Api-Key header; also send Authorization for JWT
+      h["X-Api-Key"] = api_key
+      h["Authorization"] = "Bearer #{api_key}"
+      if Config.hovod_organization_id.present?
+        h["x-organization-id"] = Config.hovod_organization_id
+      end
+      h
+    end
+
     def fetch_hovod_upload_details(params)
       api_url = Config.hovod_api_url
       api_key = Config.hovod_api_key
@@ -114,15 +139,7 @@ module DiscourseMultipleVideoStream
       end
 
       title = extract_video_title(params.file_name)
-
-      headers = {
-        "Authorization" => "Bearer #{api_key}",
-        "Content-Type" => "application/json",
-        "Accept" => "application/json",
-      }
-      if Config.hovod_organization_id.present?
-        headers["x-organization-id"] = Config.hovod_organization_id
-      end
+      headers = hovod_headers(api_key)
 
       metadata = {
         source: "discourse",
@@ -132,19 +149,14 @@ module DiscourseMultipleVideoStream
       max_duration = Config.max_duration
       metadata[:maxDurationSeconds] = max_duration.to_s if max_duration.present?
 
-      create_response =
-        Faraday.post(
-          "#{api_url}/v1/assets",
-          { title: title, metadata: metadata }.to_json,
-          headers,
-        ) do |req|
-          req.options.timeout = FARADAY_TIMEOUT
-          req.options.open_timeout = FARADAY_OPEN_TIMEOUT
-        end
+      client = build_hovod_connection(api_url)
+      create_response = client.post("/v1/assets", { title: title, metadata: metadata }.to_json, headers)
 
       if create_response.status >= 400
-        log_failure(create_response.status, parse_body(create_response.body))
-        context.fail!(error: I18n.t("multiple_video_stream.errors.upload_url"), status: 422)
+        body = parse_body(create_response.body)
+        log_failure(create_response.status, body)
+        err_msg = body["error"].presence || I18n.t("multiple_video_stream.errors.upload_url")
+        context.fail!(error: "Hovod: #{err_msg}", status: 422)
       end
 
       body = parse_body(create_response.body)
@@ -157,19 +169,18 @@ module DiscourseMultipleVideoStream
         context.fail!(error: I18n.t("multiple_video_stream.errors.upload_url"), status: 422)
       end
 
-      upload_url_response =
-        Faraday.post(
-          "#{api_url}/v1/assets/#{asset_id}/upload-url",
-          nil,
-          headers,
-        ) do |req|
-          req.options.timeout = FARADAY_TIMEOUT
-          req.options.open_timeout = FARADAY_OPEN_TIMEOUT
-        end
+      upload_url_response = client.post("/v1/assets/#{asset_id}/upload-url", nil, headers)
 
       if upload_url_response.status >= 400
-        log_failure(upload_url_response.status, parse_body(upload_url_response.body))
-        context.fail!(error: I18n.t("multiple_video_stream.errors.upload_url"), status: 422)
+        # If /upload-url endpoint fails, fall back to direct file PUT to Hovod
+        upload_url = "#{api_url}/v1/assets/#{asset_id}/upload"
+        return {
+          provider: "hovod",
+          video_id: asset_id,
+          playback_id: playback_id,
+          upload_url: upload_url,
+          upload_method: "PUT",
+        }
       end
 
       upload_body = parse_body(upload_url_response.body)
@@ -177,8 +188,7 @@ module DiscourseMultipleVideoStream
       upload_url = upload_data["uploadUrl"]
 
       if upload_url.blank?
-        log_failure(upload_url_response.status, upload_body)
-        context.fail!(error: I18n.t("multiple_video_stream.errors.upload_url"), status: 422)
+        upload_url = "#{api_url}/v1/assets/#{asset_id}/upload"
       end
 
       {
@@ -190,7 +200,7 @@ module DiscourseMultipleVideoStream
       }
     rescue JSON::ParserError, Faraday::Error => error
       log_exception(error)
-      context.fail!(error: I18n.t("multiple_video_stream.errors.upload_url"), status: 422)
+      context.fail!(error: "Hovod: #{error.message}", status: 422)
     end
 
     def extract_video_title(file_name)
@@ -199,16 +209,14 @@ module DiscourseMultipleVideoStream
         return sanitized.truncate(255) if sanitized.present?
       end
 
-      "Discourse Video - #{Time.now.strftime('%Y-%m-%d %H:%M:%S')}"
+      "Discourse Upload #{Time.now.utc.strftime('%Y-%m-%d %H:%M:%S')}"
     end
 
-    def parse_body(raw_body)
-      return {} if raw_body.blank?
-      return raw_body if raw_body.is_a?(Hash) || raw_body.is_a?(Array)
-
-      JSON.parse(raw_body)
+    def parse_body(body)
+      return {} if body.blank?
+      JSON.parse(body)
     rescue JSON::ParserError
-      { "raw" => raw_body.to_s.truncate(500) }
+      { "raw" => body }
     end
 
     def log_failure(status, body)

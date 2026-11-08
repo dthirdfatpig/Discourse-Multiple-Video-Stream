@@ -491,7 +491,19 @@ export default class VideoUploadModal extends Component {
       console.error("Video upload failed", error);
     }
 
-    this.showToast("video_stream.upload_failed");
+    const message =
+      error?.jqXHR?.responseJSON?.errors?.[0] ||
+      error?.jqXHR?.responseJSON?.error ||
+      error?.message;
+
+    if (message && typeof message === "string" && !message.includes("Object")) {
+      this.toasts.error({
+        duration: "long",
+        data: { message },
+      });
+    } else {
+      this.showToast("video_stream.upload_failed");
+    }
     this.resetUploaderState();
   }
 

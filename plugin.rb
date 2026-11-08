@@ -3,7 +3,7 @@
 # name: discourse-multiple-video-stream
 # about: Multi-provider video streaming plugin for Discourse integrating Cloudflare Stream, Bunny.net, and Hovod.
 # meta_topic_id: TODO
-# version: 0.0.3.beta
+# version: 0.0.4.beta
 # authors: dthirdfatpig
 # url: https://github.com/dthirdfatpig/Discourse-Multiple-Video-Stream
 # required_version: 2.7.0
@@ -49,6 +49,44 @@ PLUGIN_SETTING_NAMES = %i[
   multiple_video_stream_intercept_threshold_mb
   multiple_video_stream_enable_live_streams
 ].freeze
+
+# Clean label humanizer to avoid repeating "Multiple video stream" on every setting title
+module MultipleVideoLabelFormatter
+  LABEL_OVERRIDES = {
+    "multiple_video_stream_enabled" => "Enable video uploads",
+    "multiple_video_stream_provider" => "Streaming provider",
+    "multiple_video_stream_hovod_api_url" => "Hovod API URL or server IP",
+    "multiple_video_stream_hovod_api_key" => "Hovod API key",
+    "multiple_video_stream_hovod_hostname" => "Hovod CDN or playback hostname",
+    "multiple_video_stream_hovod_organization_id" => "Hovod organization ID",
+    "multiple_video_stream_account_id" => "Cloudflare account ID",
+    "multiple_video_stream_api_token" => "Cloudflare API token",
+    "multiple_video_stream_customer_subdomain" => "Cloudflare customer subdomain",
+    "multiple_video_stream_bunny_library_id" => "Bunny library ID",
+    "multiple_video_stream_bunny_api_key" => "Bunny API key",
+    "multiple_video_stream_bunny_hostname" => "Bunny CDN hostname",
+    "multiple_video_stream_allowed_extensions" => "Allowed video extensions",
+    "multiple_video_stream_max_file_size" => "Max file size (MB)",
+    "multiple_video_stream_max_duration" => "Max video duration (seconds)",
+    "multiple_video_stream_keep_original_name" => "Keep original video filename",
+    "multiple_video_stream_intercept_native_uploads" => "Intercept native video uploads",
+    "multiple_video_stream_intercept_threshold_mb" => "Intercept threshold (MB)",
+    "multiple_video_stream_enable_live_streams" => "Enable live streaming",
+  }.freeze
+
+  def humanized_name(setting)
+    str = setting.to_s
+    LABEL_OVERRIDES[str] || super(setting)
+  end
+end
+
+if defined?(SiteSettings::LabelFormatter)
+  SiteSettings::LabelFormatter.singleton_class.prepend(MultipleVideoLabelFormatter)
+end
+
+if defined?(SiteSettingExtension)
+  SiteSettingExtension.prepend(MultipleVideoLabelFormatter)
+end
 
 class MultipleVideoPluginMatcher
   def to_s
